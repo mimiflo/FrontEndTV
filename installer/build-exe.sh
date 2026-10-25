@@ -39,9 +39,11 @@ JAVA=java; command -v java >/dev/null || JAVA="$JAVA_HOME/bin/java"
 "$JAVA" installer/MakeIcon.java app/res/drawable-nodpi/icon.png out/app.ico
 # -codepage: Windows' csc otherwise reads the sources in the ANSI code page (the accents). Mono's mcs has no
 # -win32manifest; its .exe only differs by that (SetProcessDPIAware does the same at start).
-EXTRA="-codepage:65001 -win32manifest:installer/app.manifest"; [ "$CSC" = mcs ] && EXTRA=
-"$CSC" -nologo $EXTRA -optimize+ -target:winexe -win32icon:out/app.ico \
+# Windows' csc reads « installer/Program.cs » as an option after « installer » : paths get backslashes for it.
+p() { if [ "$CSC" = mcs ]; then printf '%s' "$1"; else printf '%s' "${1//\//\\}"; fi; }
+EXTRA="-codepage:65001 -win32manifest:$(p installer/app.manifest)"; [ "$CSC" = mcs ] && EXTRA=
+"$CSC" -nologo $EXTRA -optimize+ -target:winexe -win32icon:"$(p out/app.ico)" \
   -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:System.Numerics.dll \
-  -resource:app/res/drawable-nodpi/icon.png,icon.png -resource:out/app.ico,app.ico \
-  -out:FrontEndTV-Installateur.exe installer/Program.cs installer/Engine.cs installer/Adb.cs out/BuildInfo.cs
+  -resource:"$(p app/res/drawable-nodpi/icon.png)",icon.png -resource:"$(p out/app.ico)",app.ico \
+  -out:FrontEndTV-Installateur.exe "$(p installer/Program.cs)" "$(p installer/Engine.cs)" "$(p installer/Adb.cs)" "$(p out/BuildInfo.cs)"
 echo "Built FrontEndTV-Installateur.exe ($(du -h FrontEndTV-Installateur.exe | cut -f1)) for FrontEndTV $VERSION."
