@@ -20,14 +20,16 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * FrontEndTV's own updates, from the latest release of its GitHub repository (Config.UPDATE_REPO, an APK attached to
- * the release): Settings → Update checks (also by itself every 6 hours), downloads, then installs it through the TV's
+ * the release): checked by itself every 30 minutes (from the home screen, always running, and when the settings open),
+ * so a new version is already on the Update row; OK there downloads it, then installs it through the TV's
  * ADB, like the switch does, so Android shows no install screen. The new version must be signed with the same key and
  * have a higher versionCode; the update restarts the app (HomeReceiver then completes FrontEndTV mode).
  * State is only kept in the settings' process (:home), where it is shown.
  */
 final class Updater {
     static final int IDLE = 0, CHECKING = 1, LATEST = 2, AVAILABLE = 3, DOWNLOADING = 4, INSTALLING = 5, FAILED = 6;
-    private static final long STALE_MS = 6 * 3600_000L;
+    // GitHub answers 60 questions an hour without an account: every 30 min, and 5 min after a failed try (no Internet)
+    private static final long STALE_MS = 30 * 60_000L, RETRY_MS = 5 * 60_000L;
 
     private static volatile int state = IDLE, percent;
     private static volatile String newVersion = "", apkUrl = "", error = "";
@@ -63,10 +65,14 @@ final class Updater {
         if (state == AVAILABLE) install(c.getApplicationContext()); else check(c.getApplicationContext());
     }
 
-    /** When the settings open: checks if the last check is more than 6 hours old. */
+    /** From the home screen's tick and when the settings open: checks if the last check is more than 30 min old. */
     static void checkIfStale(Context c) {
         if (working() || state == AVAILABLE) return;
-        long last = prefs(c).getLong("checkedAt", 0), now = System.currentTimeMillis();
+        long last = prefs(c).getLong("checkedAt", 0), tried = prefs(c).getLong("triedAt", 0), now = System.currentTimeMillis();
+        if (now >= tried && now - tried < RETRY_MS) {
+            if (state == IDLE && now - last <= STALE_MS) state = LATEST;
+            return;
+        }
         // A version seen earlier (the app restarted since): check again to get its file.
         boolean seen = !prefs(c).getString("available", "").isEmpty();
         if (seen || now < last || now - last > STALE_MS) check(c.getApplicationContext());
@@ -75,6 +81,7 @@ final class Updater {
 
     private static void check(Context c) {
         state = CHECKING;
+        prefs(c).edit().putLong("triedAt", System.currentTimeMillis()).apply();
         new Thread(() -> {
             try {
                 JSONObject release = new JSONObject(get("https://api.github.com/repos/" + Config.UPDATE_REPO.trim() + "/releases/latest"));

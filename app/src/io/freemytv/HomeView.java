@@ -530,6 +530,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             checkNight(true);
             updatePicks();      // three new ones every hour
             updateSleep();
+            Updater.checkIfStale(getContext());   // every 30 min: a new version is already shown in the settings
             handler.postDelayed(this, 15_000);
         }
     };
@@ -3870,7 +3871,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - The TV button: a violet pill with the TV icon and its name, next to the round buttons
 
     private static final float TV_ICON = 32;
-    private static final int TV_VIOLET = 0xFF8B6CFF, TV_ORCHID = 0xFFB36CFF, TV_DEEP = 0xFF4B23D9;
+    private static final int TV_VIOLET = 0xFF7B5CF0, TV_LILAC = 0xFFB9A6FF;   // the icon: violet by day, lilac at night
     private Boolean tvAvailable;   // the TV has a channels app (asked once: it reads the package list)
 
     /** Top button `i` is the TV one (Live TV in Settings > Top Buttons). */
@@ -3892,32 +3893,29 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     /**
-     * Violet gradient with a violet glow under it, the white icon and "TV". Focused (the tvOS focus, like the round
-     * ones): it grows and turns white, with the icon and the name in deep violet.
+     * The same glass as the round buttons (light by day, smoked at night), wider, with the TV icon in violet and "TV".
+     * Focused (the tvOS focus, like the round ones): it grows and turns white, the name in dark ink.
      */
     private void drawTvButton(Canvas c, RectF r, float f) {
         float s = 1 + 0.06f * f, hw = r.width() / 2 * s, hh = r.height() / 2 * s, rad = hh;
         cell.set(r.centerX() - hw, r.centerY() - hh, r.centerX() + hw, r.centerY() + hh);
         tmp.set(cell);
-        tmp.offset(0, (8 + 8 * f) * k);
-        shadow.setColor(Ui.alpha(0xFF5B2DFF, 0.38f + 0.22f * f));
+        tmp.offset(0, (6 + 8 * f) * k);
+        shadow.setColor(Ui.alpha(0xFF000000, tone(0.1f, 0.3f) + tone(0.14f, 0.2f) * f));
         shadows.draw(c, tmp, rad, SHADOW_BLUR * k, shadow);
-        fill.setColor(0xFFFFFFFF);
-        fill.setShader(new android.graphics.LinearGradient(cell.left, 0, cell.right, 0, TV_VIOLET, TV_ORCHID,
-                android.graphics.Shader.TileMode.CLAMP));
-        c.drawRoundRect(cell, rad, rad, fill);
         fill.setShader(null);
+        fill.setColor(tone(0xB8F2F2F5, 0xB81E1E21));
+        c.drawRoundRect(cell, rad, rad, fill);
+        border.setStrokeWidth(1.5f * k);
+        border.setColor(tone(0x14000000, 0x24FFFFFF));
+        c.drawRoundRect(cell, rad, rad, border);
         if (f > 0.01f) {
             fill.setColor(Ui.alpha(0xFFFFFFFF, f));
             c.drawRoundRect(cell, rad, rad, fill);
         }
-        border.setStrokeWidth(1.5f * k);
-        border.setColor(Ui.alpha(0xFFFFFFFF, 0.28f * (1 - f)));
-        c.drawRoundRect(cell, rad, rad, border);
-        int ink = blend(0xFFFFFFFF, TV_DEEP, f);
-        float icon = TV_ICON * k * s, x = cell.left + 26 * k * s;
-        Symbols.draw(getContext(), c, "live_tv", x + icon / 2, cell.centerY(), icon, ink);
-        lTvLabel.setColor(ink);
+        float icon = TV_ICON * k * s, x = cell.left + 24 * k * s;
+        Symbols.draw(getContext(), c, "live_tv", x + icon / 2, cell.centerY(), icon, blend(tone(TV_VIOLET, TV_LILAC), TV_VIOLET, f));
+        lTvLabel.setColor(blend(tone(L_INK, 0xEBFFFFFF), L_INK, f));
         lTvLabel.setTextSize(28 * k * s);
         c.drawText(tvLabel(), x + icon + 12 * k * s, cell.centerY() + Ui.halfCap(lTvLabel), lTvLabel);
         lTvLabel.setTextSize(28 * k);

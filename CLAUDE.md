@@ -9,11 +9,11 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | Dossier / fichier | Rôle |
 |---|---|
 | `app/src/io/freemytv/` | Code Java de l'appli (identifiant Android `io.freemytv`, à ne pas changer : les mises à jour en dépendent) |
-| `HomeView.java` | L'écran d'accueil natif (vue unique dessinée à la main, calques `Layer`, ressorts `Spring`, horloge d'animation lissée). Bouton TV : pilule violette en haut (`drawTvButton`, clé `TOP_LIVE`), focus dessus à l'ouverture, au bouton Accueil et au retour d'une appli (`focusTv`). Heure : chiffres qui roulent à chaque minute (`drawClockText`) |
-| `SettingsActivity.java` | Écran des réglages (thème violet) ; reçoit aussi les réglages envoyés par l'installateur |
+| `HomeView.java` | L'écran d'accueil natif (vue unique dessinée à la main, calques `Layer`, ressorts `Spring`, horloge d'animation lissée). Bouton TV : pilule de verre en haut, icône violette et « TV » (`drawTvButton`, clé `TOP_LIVE`), focus dessus à l'ouverture, au bouton Accueil et au retour d'une appli (`focusTv`). Heure : chiffres qui roulent à chaque minute (`drawClockText`) |
+| `SettingsActivity.java` | Écran des réglages (thème violet) : 9 lignes en 3 rubriques (`SECTION_AT`), une phrase sous chacune, l'état (mise à jour, erreur) sous le logo (`drawStatus`), la comparaison dans « Écran d'accueil » ; reçoit aussi les réglages envoyés par l'installateur |
 | `HomeMode.java` / `ModeJob.java` | Bascule « FrontEndTV ⇄ Original » (désactive/réactive les applis du constructeur via l'ADB de la TV) |
 | `HomeApps.java` | Dock (`SHELF`), tiroir, logos extraits des bannières des applis |
-| `Updater.java` | Mises à jour : ligne « Mise à jour » des réglages ; lit la dernière Release GitHub (`Config.UPDATE_REPO`), télécharge `FrontEndTV.apk`, l'installe via l'ADB de la TV (`Adb.install`) |
+| `Updater.java` | Mises à jour : cherchées toutes les 30 min (tic de l'accueil ; 5 min après un échec, GitHub limitant à 60 requêtes/h), ligne « Mise à jour » des réglages ; lit la dernière Release GitHub (`Config.UPDATE_REPO`), télécharge `FrontEndTV.apk`, l'installe via l'ADB de la TV (`Adb.install`) |
 | `Recs.java` | Recommandations TMDB (clé : `Prefs.tmdbKey()`, pays : `Prefs.tmdbRegion()`) |
 | `Prefs.java` | Réglages persistants (prénom, clé TMDB, pays, ville…) |
 | `app/assets/i18n/*.json` | Traductions (clé = texte anglais) |
@@ -49,8 +49,8 @@ ANDROID_HOME=<sdk> ./build.sh      # build-tools 36 conseillé (d8 34 plantait),
   nouveautés dans `.github/release-notes.md`, puis pousser sur `main`. `.github/workflows/release.yml` voit qu'il n'y a
   pas encore de Release `v<versionName>`, compile (avec `config.example.properties` et le secret `FREEMYTV_KEYSTORE`,
   la clé de signature en base64 — déjà enregistré) et crée la Release avec `FrontEndTV.apk` + l'exe. Pas de tag à
-  pousser (le proxy de Claude Code les refuse). Les TV la trouvent dans Réglages de FrontEndTV → Mise à jour (vérifié
-  aussi tout seul toutes les 6 h). Le dépôt est public : la TV lit l'API GitHub sans compte.
+  pousser (le proxy de Claude Code les refuse). Les TV la trouvent dans Réglages de FrontEndTV → Mise à jour (cherché
+  tout seul toutes les 30 min). Le dépôt est public : la TV lit l'API GitHub sans compte.
 - Clé de signature des versions publiques : CN=FrontEndTV, O=Florian (SHA-256 `a0821902…4f52ca`), depuis la 1.2. La
   1.1 avait une autre clé : l'installateur remplace tout seul une version signée autrement.
 
