@@ -20,7 +20,7 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Installe FrontEndTV sur une Google TV / Android TV")]
 [assembly: AssemblyProduct("FrontEndTV")]
 [assembly: AssemblyCompany("Florian")]
-[assembly: AssemblyCopyright("Licence MIT — d'après Free My TV")]
+[assembly: AssemblyCopyright("© Florian")]
 [assembly: AssemblyVersion("1.2.0.0")]
 
 namespace FrontEndTV.Setup {
@@ -299,7 +299,7 @@ sealed class MainForm : Form, IReport {
             if (MessageBox.Show(this, "Remettre l'écran d'accueil d'origine de la TV ?\nLes applis mises de côté reviennent comme avant.",
                     "FrontEndTV", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK) Start(true);
         });
-        AddLabel(setup, "par Florian · d'après Free My TV (licence MIT)", small, Color.FromArgb(110, 104, 132),
+        AddLabel(setup, "par Florian", small, Color.FromArgb(110, 104, 132),
                 S(32), S(612), S(456), S(20)).TextAlign = ContentAlignment.MiddleCenter;
         foreach (Field f in new[] { ip, name, region, key }) {
             f.Box.KeyDown += (s, e) => {
