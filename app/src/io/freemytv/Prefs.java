@@ -105,7 +105,7 @@ final class Prefs {
 
     // MARK: - Set by the installer (adb), else config.properties
 
-    /** The TMDB key: the one the installer sent (Installer-FrontEndTV.bat), else config.properties'. */
+    /** The TMDB key: the one the installer sent (FrontEndTV-Installateur.exe), else config.properties'. */
     static String tmdbKey() {
         return (app == null ? Config.TMDB_KEY : sp().getString("tmdb_key", Config.TMDB_KEY)).trim();
     }

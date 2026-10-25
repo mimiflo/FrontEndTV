@@ -27,16 +27,20 @@ Il faut une **Google TV ou Android TV** (Android 8 ou plus récent) et un **PC W
 1. **Sur la TV** (une seule fois)
    - *Paramètres → Système → À propos* : appuie **7 fois** sur *Build* (message « Vous êtes développeur »).
    - *Paramètres → Système → Options pour les développeurs* : active **Débogage USB**.
-2. **Sur le PC** : télécharge la dernière version dans [Releases](../../releases) :
-   `FrontEndTV.apk`, `Installer-FrontEndTV.bat` et `installer.ps1`, dans le même dossier.
-3. Double-clique sur **`Installer-FrontEndTV.bat`**. Il fait tout :
+2. **Sur le PC** : télécharge **`FrontEndTV-Installateur.exe`** dans [Releases](../../releases). Un seul fichier :
+   l'appli est dedans.
+3. Double-clique dessus, vérifie l'adresse de la TV (trouvée toute seule), puis **Installer FrontEndTV**. Il fait tout :
+   - **trouve la TV tout seul** (celle de la dernière fois, sinon il cherche sur le réseau) ;
    - télécharge les outils Android de Google si besoin ;
-   - **trouve la TV tout seul** sur le Wi-Fi (sinon il demande son adresse IP) ;
-   - installe l'appli, demande (facultatif) ton prénom, ton pays et ta clé TMDB ;
-   - **active FrontEndTV comme écran d'accueil** et vérifie que c'est fait.
+   - installe l'appli (ou la met à jour ; rien à faire si elle est déjà à jour), envoie ton prénom, ton pays et ta
+     clé TMDB (facultatifs) ;
+   - **active FrontEndTV comme écran d'accueil**, attend la confirmation et l'ouvre sur la TV.
 
-   Sur la TV, accepte deux fois **« Autoriser le débogage USB ? »** en cochant *Toujours autoriser* : une fois pour le
-   PC, une fois pour FrontEndTV.
+   Sur la TV, accepte **« Autoriser le débogage USB ? »** en cochant *Toujours autoriser* : une fois pour le PC, et
+   la première fois une seconde pour FrontEndTV. L'installateur te dit quand.
+
+> Windows peut afficher « Windows a protégé votre ordinateur » (l'installateur n'est pas signé) : *Informations
+> complémentaires → Exécuter quand même*.
 
 > Sur Android 14, Google Play Protect peut afficher « Appli à risque bloquée » : *Plus de détails → Installer quand même*.
 > Sur une Chromecast avec Google TV (Android 14), active aussi *Débogage sans fil* dans les options pour les développeurs.
@@ -48,11 +52,11 @@ Gratuite : crée un compte sur [themoviedb.org](https://www.themoviedb.org/signu
 *Jeton d'accès en lecture à l'API* (ou la *Clé d'API*) quand l'installateur la demande. Elle reste sur ta TV.
 Sans clé, l'accueil fonctionne, sans les recommandations.
 
-Pour changer de clé, de pays ou de prénom plus tard, relance simplement l'installateur.
+Pour changer de clé, de pays ou de prénom plus tard, relance simplement l'installateur (clé vide : la TV garde la sienne).
 
 ## Revenir en arrière
 
-Relance l'installateur et choisis **[2]**, ou sur la TV : **FrontEndTV → Écran d'accueil → Original**. L'accueil d'origine, l'économiseur et toutes les
+Relance l'installateur et clique sur **Remettre l'écran d'accueil d'origine**, ou sur la TV : **FrontEndTV → Écran d'accueil → Original**. L'accueil d'origine, l'économiseur et toutes les
 applis désactivées reviennent exactement comme avant. Pour désinstaller : passe d'abord sur *Original*, puis
 *Paramètres → Applications → FrontEndTV → Désinstaller*.
 
@@ -66,6 +70,9 @@ Sous Windows, utilise Git Bash ou WSL.
 adb connect 192.168.1.50:5555
 adb install -r FrontEndTV.apk
 ```
+
+Sous Windows, `build.sh` crée aussi **`FrontEndTV-Installateur.exe`** (avec l'APK dedans) grâce au compilateur C#
+fourni avec Windows ; ailleurs, il faut Mono (`mcs`). Le code de l'installateur est dans `installer/`.
 
 - `config.properties` (clé TMDB, ville, pays, prénom…) et `freemytv.keystore` (la clé de signature créée au premier
   build) restent sur ton PC : ils sont exclus de Git. **Garde `freemytv.keystore`** : les mises à jour doivent être

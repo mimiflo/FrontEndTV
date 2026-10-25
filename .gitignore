@@ -14,6 +14,6 @@ __pycache__/
 .DS_Store
 tools/.i18n-cache.json
 
-# Outils Android téléchargés par l'installateur
-installer/platform-tools/
-installer/installer-log.txt
+# L'installateur Windows (créé par build.sh)
+*.exe
+*.ico

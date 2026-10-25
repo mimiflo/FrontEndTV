@@ -130,3 +130,29 @@ if [ ! -f freemytv.keystore ]; then
 fi
 "$BT/apksigner$BAT" sign --ks freemytv.keystore --ks-pass pass:freemytv --key-pass pass:freemytv --out FrontEndTV.apk out/aligned.apk
 echo "Built FrontEndTV.apk ($(du -h FrontEndTV.apk | cut -f1)). Install: adb install -r FrontEndTV.apk"
+
+# --- FrontEndTV-Installateur.exe: the Windows installer in one file (installer/*.cs, with the APK inside).
+# Compiled with the csc.exe that comes with Windows (from Git Bash or WSL), or Mono's mcs elsewhere.
+CSC=""
+for c in /c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe \
+         /c/Windows/Microsoft.NET/Framework/v4.0.30319/csc.exe /mnt/c/Windows/Microsoft.NET/Framework/v4.0.30319/csc.exe; do
+  if [ -f "$c" ]; then CSC="$c"; break; fi
+done
+if [ -z "$CSC" ] && command -v mcs >/dev/null; then CSC=mcs; fi
+if [ -z "$CSC" ]; then
+  echo "No C# compiler (Windows' csc.exe, or Mono's mcs): FrontEndTV-Installateur.exe not built."
+else
+  # The app's icon as the .exe's icon: an .ico that holds the PNG as it is
+  le() { local n=$(($1)) i; for ((i = 0; i < $2; i++)); do printf "\\$(printf '%03o' $(( (n >> (8 * i)) & 255 )))"; done; }
+  PNG=app/res/drawable-nodpi/icon.png
+  read -r _ _ w1 w2 _ _ h1 h2 <<< "$(od -An -tu1 -j16 -N8 "$PNG")"
+  W=$(( (w1 << 8) | w2 )); H=$(( (h1 << 8) | h2 )); [ "$W" -ge 256 ] && W=0; [ "$H" -ge 256 ] && H=0
+  { le 0 2; le 1 2; le 1 2; le "$W" 1; le "$H" 1; le 0 2; le 1 2; le 32 2; le "$(wc -c < "$PNG")" 4; le 22 4; cat "$PNG"; } > out/icon.ico
+  # -codepage: Windows' csc otherwise reads the sources in the ANSI code page (the accents)
+  CP=-codepage:65001; [ "$CSC" = mcs ] && CP=
+  "$CSC" -nologo $CP -optimize+ -target:winexe -win32icon:out/icon.ico \
+    -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:System.IO.Compression.dll \
+    -resource:FrontEndTV.apk,FrontEndTV.apk -resource:$PNG,icon.png \
+    -out:FrontEndTV-Installateur.exe installer/Program.cs installer/Engine.cs
+  echo "Built FrontEndTV-Installateur.exe ($(du -h FrontEndTV-Installateur.exe | cut -f1)): the installer for Windows, in one file."
+fi

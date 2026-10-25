@@ -17,8 +17,9 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | `Prefs.java` | Réglages persistants (prénom, clé TMDB, pays, ville…) |
 | `app/assets/i18n/*.json` | Traductions (clé = texte anglais) |
 | `app/res/drawable-nodpi/` | `icon.png` (192×192) et `banner.png` (640×360) |
-| `installer/installer.ps1` | Installateur Windows automatique (lancé par `Installer-FrontEndTV.bat`) |
-| `build.sh` | Compilation sans Gradle : aapt2 → javac → d8 → zipalign → apksigner → `FrontEndTV.apk` |
+| `installer/Program.cs` | Installateur Windows `FrontEndTV-Installateur.exe` : la fenêtre (thème sombre/violet, WinForms) |
+| `installer/Engine.cs` | Installateur : tout le travail avec la TV (adb), sans interface |
+| `build.sh` | Compilation sans Gradle : aapt2 → javac → d8 → zipalign → apksigner → `FrontEndTV.apk`, puis l'installateur `.exe` |
 
 ## Compiler
 
@@ -28,25 +29,32 @@ ANDROID_HOME=<sdk> ./build.sh      # build-tools 36 conseillé (d8 34 plantait),
 - Le 1er lancement copie `config.example.properties` en `config.properties` (clé TMDB, ville, prénom, pays…).
 - `config.properties` et `freemytv.keystore` ne sont **jamais** commités (`.gitignore`). La clé de signature doit
   rester la même pour pouvoir mettre à jour l'appli installée ; mot de passe du keystore : voir `build.sh`.
+- `build.sh` crée aussi `FrontEndTV-Installateur.exe` (l'APK est dedans, en ressource) avec le `csc.exe` livré avec
+  Windows (Git Bash ou WSL), ou `mcs` (Mono) ailleurs. Code en **C# 5** (pas de `$"..."`, `?.`, `=>` pour les membres) :
+  c'est ce que comprend le csc de Windows.
 - **Version publique** (Releases GitHub) : compiler avec `config.properties` = `config.example.properties`
   (aucune clé, aucune ville). Vérifier que l'APK ne contient pas la clé TMDB personnelle avant de publier.
+  Publier `FrontEndTV-Installateur.exe` (et `FrontEndTV.apk` pour ceux qui installent à la main).
 
 ## Installer sur une TV (Windows)
 
-`installer/Installer-FrontEndTV.bat` + `installer/installer.ps1` + `FrontEndTV.apk` dans le même dossier, puis
-double-clic. Le script :
-1. trouve `adb` (ou télécharge les platform-tools officiels de Google) ;
-2. scanne le réseau local (port 5555) ou demande l'IP ;
-3. se connecte (l'utilisateur accepte « Autoriser le débogage USB ? » sur la TV) ;
-4. `adb install -r`, autorise le démarrage en arrière-plan (TCL) ;
-5. envoie prénom / pays / clé TMDB et lance la bascule :
+Double-clic sur `FrontEndTV-Installateur.exe` (un seul fichier, l'APK est dedans). La fenêtre propose l'adresse de la
+TV (celle de la dernière fois, sinon recherche du port 5555 sur le réseau local), prénom, pays, clé TMDB (vide : la
+TV garde la sienne), puis le bouton **Installer FrontEndTV**. Le programme (`Engine.cs`) :
+1. trouve `adb` (ou télécharge les platform-tools officiels de Google dans `%LOCALAPPDATA%\FrontEndTV`) ;
+2. se connecte (l'utilisateur accepte « Autoriser le débogage USB ? » sur la TV) ;
+3. compare l'empreinte SHA-256 de l'APK installé : `adb install -r` seulement s'il a changé ; autorise le démarrage
+   en arrière-plan (TCL) ;
+4. envoie prénom / pays / clé TMDB et lance la bascule :
    `am start -n io.freemytv/.SettingsActivity --es switch free --es tmdb_region FR --es user_name 'Florian' --es tmdb_key '…'`
-6. se déconnecte (Android 8–10 peut sinon donner la réponse du message suivant au PC), l'utilisateur accepte le
-   second « Autoriser le débogage USB ? » (celui de l'appli elle-même), puis le script vérifie avec
-   `cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME`.
+5. attend la confirmation avec `cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME`,
+   puis appuie sur Accueil. Le second « Autoriser le débogage USB ? » (celui de l'appli) est repéré tout seul
+   (`dumpsys window`, Android 11+) ; sur Android 8–10, il se déconnecte pendant ce message (sinon la réponse peut aller
+   au PC) et affiche un bouton « C'est fait » (ou continue seul après 45 s).
 
-Options : `-Ip`, `-Name`, `-Region`, `-Key`, `-Apk`, `-Original` (remet l'accueil d'origine), `-Auto` (aucune question).
-Journal : `installer/installer-log.txt`.
+Lien « Remettre l'écran d'accueil d'origine » : `--es switch original`. Options en ligne de commande : `-Ip`, `-Name`,
+`-Region`, `-Key`, `-Apk`, `-Original`, `-Auto` (lance tout de suite). Journal (clé TMDB masquée) :
+`%LOCALAPPDATA%\FrontEndTV\installateur-journal.txt` ; mémoire (IP, prénom, pays — jamais la clé) : `installateur.ini`.
 
 ## Mesurer la fluidité
 
