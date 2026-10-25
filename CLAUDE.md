@@ -84,4 +84,4 @@ La TV de test (TCL Smart TV Pro, Mali-G31) affiche à **50 Hz** : 50 images/s es
 - Ne jamais publier une clé TMDB, une adresse ou une ville personnelle.
 - Ne pas modifier les réglages système de la TV sans l'accord du propriétaire.
 - Garder la mention de Free My TV dans `LICENSE` et `README.md` (licence MIT).
-- Ne **jamais** créer de pull request : commiter et pousser sur la branche de travail, c'est tout.
+- Ne **jamais** créer de pull request : commiter et pousser directement sur la branche **`main`**, à chaque fois.
