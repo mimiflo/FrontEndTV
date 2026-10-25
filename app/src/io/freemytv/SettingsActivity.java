@@ -807,8 +807,8 @@ public class SettingsActivity extends Activity {
             String line = note != null ? note : off ? Ui.tr("Unavailable") + " · " + about : about;
             boolean twoLines = note != null && cardDesc.measureText(line) > w;
             float base = r.top + (twoLines ? 38 : 48) * k;
-            // On the right: the arrow, and before it the value (and a spinner, or a dot for news)
-            float valueLeft = right - 24 * k;
+            // On the right: the arrow, and before it the value (and a spinner, or a dot for news), centered on the arrow
+            float valueLeft = right - 24 * k, mid = r.centerY();
             if (!off) {
                 float cw = Symbols.width(getContext(), "chevron_right", 24 * k);
                 Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, r.centerY(), 24 * k, 0xFFB8C0D0);
@@ -816,16 +816,16 @@ public class SettingsActivity extends Activity {
                 if (value != null) {
                     cardValue.setColor(news ? 0xFFFFD596 : 0xFFB9A6FF);
                     String v = fit(value, cardValue, 560 * k);
-                    c.drawText(v, valueLeft, base, cardValue);
+                    c.drawText(v, valueLeft, mid + Ui.halfCap(cardValue), cardValue);
                     valueLeft -= cardValue.measureText(v) + 24 * k;
                 }
                 if (spin) {
                     spinner.setColor(0xFFFFFFFF);
-                    Ui.spinner(c, valueLeft + 8 * k, base - 8 * k, 11 * k, seconds * 1.3f, spinner);
+                    Ui.spinner(c, valueLeft + 8 * k, mid, 11 * k, seconds * 1.3f, spinner);
                     valueLeft -= 26 * k;
                 } else if (news) {
                     dot.setColor(AMBER);
-                    c.drawCircle(valueLeft + 10 * k, base - 8 * k, 6 * k, dot);
+                    c.drawCircle(valueLeft + 10 * k, mid, 6 * k, dot);
                 }
             }
             cardTitle.setColor(off ? 0x80FFFFFF : 0xFFFFFFFF);
