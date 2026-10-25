@@ -1,9 +1,15 @@
-## FrontEndTV 1.8.2 — nouvel installateur Windows
+## FrontEndTV 1.8.3 — corrections d'affichage
 
-- **Animation d'ouverture** : le logo apparaît dans une lueur violette, puis glisse à sa place pendant que la fenêtre s'affiche.
-- **Liste des TV trouvées** : chaque TV du réseau s'affiche avec son nom, sa marque, son modèle et son adresse, et indique si elle est « Prête » ou s'il faut encore activer le débogage USB. Un clic pour choisir (double-clic pour installer). Celle de la dernière fois, ou la seule prête, est choisie toute seule.
-- **Pays dans un menu déroulant**, avec le nom en français (une lettre au clavier saute au pays).
-- Les étapes pour préparer la TV s'affichent directement dans la liste quand aucune TV n'est trouvée.
-- La recherche ne fait que des connexions sortantes : pas de message du pare-feu Windows.
+**Sur la TV (réglages)**
+- Une longue erreur sous « Écran d'accueil » ne passe plus sous la valeur à droite : elle va à la ligne avant.
+- Le petit cercle qui tourne (téléchargement d'une mise à jour, bascule) ne touche plus le texte à côté.
+- Wi-Fi désactivé : l'aide dit maintenant d'activer le Wi-Fi.
+- Les textes en français tutoient partout (certains vouvoyaient encore).
 
-**Installer** : télécharge `FrontEndTV-Installateur.exe` et double-clique dessus. La TV, elle, se met à jour depuis Réglages de FrontEndTV → TV et mises à jour → *Mise à jour*.
+**Installateur Windows**
+- L'adresse IP de chaque TV reste toujours entière, même avec un très long nom de modèle.
+- Avec plus de trois TV, la barre de défilement a sa place et ne chevauche plus la TV choisie.
+- Le message « active le Débogage USB » n'est plus coupé, et l'étiquette « Adresse IP » ne mord plus sur le champ.
+- Après une réussite, le bouton « Réessayer » ne reste plus affiché.
+
+**Mettre à jour** : sur la TV, Réglages de FrontEndTV → TV et mises à jour → *Mise à jour*. Ou télécharge `FrontEndTV-Installateur.exe` et double-clique dessus.

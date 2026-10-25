@@ -803,10 +803,7 @@ public class SettingsActivity extends Activity {
             int ink = off ? 0x59FFFFFF : 0xFFEDEFF5;
             if (icon != null) Symbols.draw(getContext(), c, icon, r.left + 58 * k, r.centerY(), 40 * k, ink);
             else drawWifi(c, r.left + 58 * k, r.centerY() + 15 * k, 30 * k, bars, ink, false);
-            float x = r.left + 112 * k, right = r.right - 40 * k, w = right - 30 * k - x;
-            String line = note != null ? note : off ? Ui.tr("Unavailable") + " · " + about : about;
-            boolean twoLines = note != null && cardDesc.measureText(line) > w;
-            float base = r.top + (twoLines ? 38 : 48) * k;
+            float x = r.left + 112 * k, right = r.right - 40 * k;
             // On the right: the arrow, and before it the value (and a spinner, or a dot for news), centered on the arrow
             float valueLeft = right - 24 * k, mid = r.centerY();
             if (!off) {
@@ -821,13 +818,18 @@ public class SettingsActivity extends Activity {
                 }
                 if (spin) {
                     spinner.setColor(0xFFFFFFFF);
-                    Ui.spinner(c, valueLeft + 8 * k, mid, 11 * k, seconds * 1.3f, spinner);
-                    valueLeft -= 26 * k;
+                    Ui.spinner(c, valueLeft - 4 * k, mid, 11 * k, seconds * 1.3f, spinner);
+                    valueLeft -= 40 * k;
                 } else if (news) {
                     dot.setColor(AMBER);
                     c.drawCircle(valueLeft + 10 * k, mid, 6 * k, dot);
                 }
             }
+            // Name and what's under it stop before the value: a long note wraps (two lines at most) rather than run under it
+            float w = (value != null || spin || news ? valueLeft : right - 30 * k) - x;
+            String line = note != null ? note : off ? Ui.tr("Unavailable") + " · " + about : about;
+            boolean twoLines = note != null && cardDesc.measureText(line) > w;
+            float base = r.top + (twoLines ? 38 : 48) * k;
             cardTitle.setColor(off ? 0x80FFFFFF : 0xFFFFFFFF);
             c.drawText(fit(label, cardTitle, valueLeft - x), x, base, cardTitle);
             cardDesc.setColor(note != null ? AMBER : off ? 0x66FFFFFF : 0xFF9AA3B5);
@@ -934,6 +936,7 @@ public class SettingsActivity extends Activity {
             float hy = (WIFI_LIST_TOP + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
             String say = !adb ? Ui.tr("To see and join networks here, turn on FrontEndTV mode in Home Screen.")
                     : !Wifi.read ? Ui.tr("Looking for networks…")
+                    : !Wifi.enabled ? Ui.tr("Turn Wi-Fi on to see the networks around.")
                     : Wifi.enabled && nets.isEmpty() ? Ui.tr("No network found.")
                     : !Wifi.JOINABLE ? Ui.tr("On this TV, networks are joined in its own Wi-Fi settings.")
                     : wifiList() > WIFI_VISIBLE ? (wifiScroll + Math.max(focus, 1)) + " / " + wifiList() + "  ·  " + Ui.tr("OK joins the network: type its password with the remote.")

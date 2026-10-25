@@ -340,8 +340,7 @@ final class HomeMode {
             boolean setupHome = setupIsHome(adb);
             if ((setupHome && owners.contains(GOOGLE_SETUP)) || owners.contains(packageOf(home))) {
                 throw new IOException(Ui.tr("the TV's first setup saved the Wi-Fi, and turning it off would erase those networks. "
-                        + "In Settings → Network & Internet, forget the network and connect again (networks out of range don't "
-                        + "show there: Claude Code can remove them from your computer), then try once more."));
+                        + "In Settings → Network & Internet, forget the network and connect again, then try once more."));
             }
             if (metrics(latest, ORIGINAL) == null && !home.isEmpty()) {
                 measureMemory(c, adb, ORIGINAL);

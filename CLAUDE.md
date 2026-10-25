@@ -80,6 +80,9 @@ Affichage : polices en pixels et tout à la même échelle (DPI de l'écran, ré
 hauteur) ; textes dessinés avec leur couleur de fond (ClearType net) ; formes arrondies remplies avec lissage (pas de
 `SetClip`, qui fait des escaliers).
 
+Essais hors de Windows : `xvfb-run mono FrontEndTV-Installateur.exe -SelfTest fenetre.png` (Mono), avec
+`FRONTENDTV_SCALE=1.5` pour voir la fenêtre à 150 % (Mono ignore l'échelle de l'écran).
+
 Lien « Remettre l'écran d'accueil d'origine » : `--es switch original`. Options en ligne de commande : `-Ip`, `-Name`,
 `-Region`, `-Key`, `-Apk`, `-Original`, `-Auto` (lance tout de suite). Journal (clé TMDB masquée) :
 `%LOCALAPPDATA%\FrontEndTV\installateur-journal.txt` ; mémoire (IP, prénom, pays — jamais la clé) : `installateur.ini`.

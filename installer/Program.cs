@@ -193,6 +193,10 @@ sealed class MainForm : Form, IReport {
         using (Graphics g = CreateGraphics()) dpi = g.DpiX / 96f;
         Rectangle screen = Screen.FromPoint(Cursor.Position).WorkingArea;
         scale = Math.Max(0.75f, Math.Min(dpi, (screen.Height - 56 * dpi) / Height0));
+        // Essais de mise en page (Mono ignore l'échelle de l'écran) : FRONTENDTV_SCALE=1.5 force 150 %
+        float forced;
+        if (float.TryParse(Environment.GetEnvironmentVariable("FRONTENDTV_SCALE") ?? "", System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out forced) && forced >= 0.75f && forced <= 3) scale = forced;
         // Polices en pixels, à la même échelle que tout le reste : rien ne déborde ni ne s'étire
         body = Px(14f, false);
         small = Px(12.5f, false);
@@ -231,7 +235,7 @@ sealed class MainForm : Form, IReport {
         }
     }
 
-    const int Width0 = 560, Height0 = 736, W = Width0 - 64;   // taille de la fenêtre à 100 %, largeur du contenu
+    const int Width0 = 560, Height0 = 744, W = Width0 - 64;   // taille de la fenêtre à 100 %, largeur du contenu
 
     int S(float v) { return (int) Math.Round(v * scale); }
 
@@ -432,7 +436,7 @@ sealed class MainForm : Form, IReport {
         setup.Controls.Add(tvs);
 
         y = tvs.Bottom + S(14);
-        AddLabel(setup, "Adresse IP", bold, Palette.Text, S(32), y + S(9), S(120), S(22));
+        AddLabel(setup, "Adresse IP", bold, Palette.Text, S(32), y + S(9), S(108), S(22));
         ip = new Field("ex. 192.168.1.50 — ou choisis ta TV ci-dessus", scale, body);
         ip.Bounds = new Rectangle(S(148), y, S(W - 116), S(40));
         ip.Value = options.Ip;
@@ -446,7 +450,7 @@ sealed class MainForm : Form, IReport {
         setup.Controls.Add(ip);
         ipStatus = AddLabel(setup, "", small, Palette.Dim, S(32), y + S(46), S(W), S(36));
 
-        y = ipStatus.Bottom + S(6);
+        y = ipStatus.Bottom + S(14);
         AddLabel(setup, "Ton prénom", bold, Palette.Text, S(32), y, S(240), S(22));
         AddLabel(setup, "Pays", bold, Palette.Text, S(300), y, S(228), S(22));
         name = new Field("facultatif, pour « Bonsoir, … »", scale, body);
@@ -561,8 +565,8 @@ sealed class MainForm : Form, IReport {
     /** Ce qu'on peut dire de la TV choisie ; `final` : après une recherche (elle peut démarrer seule). */
     void TellAbout(Tv t, bool final) {
         if (!t.Adb) {
-            Status("Sur cette TV, active « Débogage USB » : Paramètres → Système → À propos (7 appuis sur « Build »), "
-                    + "puis Options pour les développeurs. Je réessaie toutes les 5 s.", Palette.Amber);
+            Status("Active « Débogage USB » sur cette TV : Paramètres → Système → À propos (7 appuis sur « Build »), "
+                    + "puis Options pour les développeurs. Je réessaie tout seul.", Palette.Amber);
             rescan.Start();
             return;
         }
@@ -686,6 +690,7 @@ sealed class MainForm : Form, IReport {
         steps.FailRunning();
         if (error == null) {
             Say(Tone.Success, done);
+            retry.Visible = false;
             close.Text = "Terminer";
             close.Left = S(32);
             close.Width = S(W);
@@ -1318,7 +1323,8 @@ sealed class DeviceList : Control {
         for (int v = 0; v < Shown && top + v < Items.Count; v++) {
             int i = top + v;
             Tv t = Items[i];
-            var r = new RectangleF(0.5f, v * Row + 0.5f, Width - 1.5f, RowH * scale - 1);
+            float gutter = Items.Count > Shown ? 10 * scale : 0;   // la place de la barre de défilement
+            var r = new RectangleF(0.5f, v * Row + 0.5f, Width - 1.5f - gutter, RowH * scale - 1);
             bool on = i == selected;
             Color back = on ? Palette.Mix(Palette.Card, Palette.Accent, 46) : i == hover ? Palette.Mix(Palette.Card, Palette.Accent, 16) : Palette.Card;
             using (var path = Palette.Round(r, 12 * scale)) {
@@ -1343,8 +1349,12 @@ sealed class DeviceList : Control {
             int hDetail = TextRenderer.MeasureText(g, "Ag", detail, Size.Empty, TextFormatFlags.NoPadding).Height;
             int y = (int) (r.Y + (r.Height - hName - hDetail - 3 * scale) / 2);
             TextRenderer.DrawText(g, t.Title(), name, new Rectangle(x, y, textRight - x, hName), Palette.Text, back, one);
-            string sub = (t.Last ? "La dernière fois  ·  " : "") + t.Detail();
-            TextRenderer.DrawText(g, sub, detail, new Rectangle(x, y + hName + (int) (3 * scale), textRight - x, hDetail), Palette.Dim, back, one);
+            // Dessous : la marque et le modèle (raccourcis s'il le faut), puis l'adresse, toujours entière
+            string sub = ((t.Last ? "La dernière fois  ·  " : "") + t.Kind()).Trim(), ip = (sub.Length > 0 ? "  ·  " : "") + t.Ip;
+            int y2 = y + hName + (int) (3 * scale), ipW = TextRenderer.MeasureText(g, ip, detail, Size.Empty, TextFormatFlags.NoPadding).Width;
+            int room = Math.Max(0, textRight - x - ipW), subW = Math.Min(room, TextRenderer.MeasureText(g, sub, detail, Size.Empty, TextFormatFlags.NoPadding).Width);
+            if (sub.Length > 0) TextRenderer.DrawText(g, sub, detail, new Rectangle(x, y2, room, hDetail), Palette.Dim, back, one);
+            TextRenderer.DrawText(g, ip, detail, new Point(x + subW, y2), Palette.Dim, back, TextFormatFlags.NoPadding);
             // À droite : prête (vert) ou débogage à activer (orange)
             float dot = 8 * scale, cx = r.Right - 14 * scale - chip.Width - dot - 6 * scale, cy = r.Y + r.Height / 2;
             using (var b = new SolidBrush(stateColor)) g.FillEllipse(b, cx, cy - dot / 2, dot, dot);

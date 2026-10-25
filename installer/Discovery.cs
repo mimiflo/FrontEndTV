@@ -34,10 +34,10 @@ sealed class Tv {
         return bm.Length > 0 ? bm : "TV Android";
     }
 
-    /** Dessous : la marque et le modèle (s'ils ne sont pas déjà le titre), puis l'adresse. */
-    public string Detail() {
+    /** Dessous, avant l'adresse : la marque et le modèle, s'ils ne sont pas déjà le titre ("" sinon). */
+    public string Kind() {
         string bm = BrandModel();
-        return bm.Length > 0 && bm != Title() ? bm + "  ·  " + Ip : Ip;
+        return bm != Title() ? bm : "";
     }
 
     string BrandModel() {
