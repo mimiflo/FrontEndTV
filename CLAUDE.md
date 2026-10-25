@@ -21,7 +21,8 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | `app/assets/i18n/*.json` | Traductions (clé = texte anglais) |
 | `app/res/drawable-nodpi/` | `icon.png` (512×512) et `banner.png` (1280×720), dessinés par `tools/make_art.py` (`python3 tools/make_art.py`, Pillow ; ne pas retoucher à la main) |
 | `RemoteKeys.java` / `RemoteKeyService.java` | Touches d'applis de la télécommande : codes connus (TCL, Vestel, KTC, Sony, Xiaomi, Formovie) ; ailleurs (Philips…) touches **trouvées toutes seules** : une touche inconnue suivie (≤ 2,5 s) de l'ouverture d'une appli est notée avec elle (`RemoteKeys.onWindow` → `remote-detected.txt`) et listée « Touche Netflix — Gérée par la TV » ; ou **apprises** (Apprendre une touche ; fichiers `remote-learn` / `remote-heard` entre les processus). Une touche = son code de balayage, sinon son code de touche |
-| `installer/Program.cs` | Installateur Windows `FrontEndTV-Installateur.exe` : la fenêtre (thème sombre/violet, WinForms) |
+| `installer/Program.cs` | Installateur Windows `FrontEndTV-Installateur.exe` : la fenêtre (thème sombre/violet, WinForms) : ouverture animée (`Splash` : logo qui grandit, puis glisse dans l'en-tête en fondu enchaîné avec la page), liste des TV trouvées à choisir (`DeviceList` : nom, marque, modèle, IP, « Prête » ou « Débogage à activer »), pays dans un menu déroulant (`Picker`, `Countries`) |
+| `installer/Discovery.cs` | Installateur : trouver les TV, seulement par connexions sortantes (pas de question du pare-feu) — dernière TV et table ARP de Windows, sinon tout le réseau par groupes de 24 ; ports 5555 (débogage : prête), 6466 (télécommande Android TV : c'est une TV), 8008 (Google Cast : `ssdp/device-desc.xml` / `eureka_info` donnent nom, marque, modèle) |
 | `installer/Engine.cs` | Installateur : tout le travail avec la TV, sans interface |
 | `installer/Adb.cs` | Installateur : client ADB intégré (clé RSA, `shell:`, installation par `exec:cmd package install -S`) — pas d'adb.exe |
 | `installer/MakeIcon.java` | `build-exe.sh` : icône `.ico` en 11 tailles (16 → 256 px) à partir de `icon.png` |
@@ -60,10 +61,10 @@ ANDROID_HOME=<sdk> ./build.sh      # build-tools 36 conseillé (d8 34 plantait),
 ## Installer sur une TV (Windows)
 
 Double-clic sur `FrontEndTV-Installateur.exe` (un seul fichier, l'APK est dedans, aucun outil externe : il parle ADB
-lui-même, `Adb.cs`). La fenêtre cherche la TV (celle de la dernière fois, sinon le port 5555 sur le réseau local, de
-nouveau toutes les 4 s tant que rien ne répond) ; dès qu'elle est trouvée, l'installation démarre seule après un compte
-à rebours (4 s, ou 8 s la première fois) qui s'arrête si on touche à un champ (prénom, pays, clé TMDB — vide : la TV
-garde la sienne). Le programme (`Engine.cs`) :
+lui-même, `Adb.cs`). Après l'animation d'ouverture, la fenêtre liste les TV du réseau (`Discovery.cs`, de nouveau
+toutes les 5 s tant qu'aucune TV prête n'est choisie) avec leur nom, leur marque et leur modèle ; elle choisit seule
+celle de la dernière fois, ou la seule prête, et l'installation démarre alors après un compte à rebours (4 s, ou 8 s la
+première fois) qui s'arrête si on touche à un réglage (TV, prénom, pays, clé TMDB — vide : la TV garde la sienne). Le programme (`Engine.cs`) :
 1. crée une fois la clé ADB de ce PC (`%LOCALAPPDATA%\FrontEndTV\cle-adb.xml`) ;
 2. se connecte (l'utilisateur accepte « Autoriser le débogage USB ? » sur la TV) ;
 3. compare l'empreinte SHA-256 de l'APK installé : il n'envoie l'APK (`exec:cmd package install -r -S`) que s'il a

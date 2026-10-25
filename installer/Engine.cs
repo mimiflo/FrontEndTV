@@ -8,15 +8,12 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace FrontEndTV.Setup {
 
@@ -363,112 +360,7 @@ sealed class Engine {
         }
     }
 
-    // MARK: - Trouver la TV
-
-    /**
-     * Les adresses du réseau local qui répondent sur le port 5555 (le débogage réseau d'Android). D'abord les appareils
-     * que Windows connaît déjà (sa table ARP : rien n'est envoyé pour la lire) ; avec `wholeNetwork`, s'il n'y a rien,
-     * les 254 adresses du réseau, par groupes de 24 : un « balayage » d'un coup ressemble à ce que font les logiciels
-     * malveillants, et les antivirus le surveillent.
-     */
-    public static List<string> FindTVs(bool wholeNetwork) {
-        var own = new List<string>();
-        var prefixes = new List<string>();
-        try {
-            foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces()) {
-                if (ni.OperationalStatus != OperationalStatus.Up || ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
-                foreach (UnicastIPAddressInformation a in ni.GetIPProperties().UnicastAddresses) {
-                    if (a.Address.AddressFamily != AddressFamily.InterNetwork) continue;
-                    string ip = a.Address.ToString();
-                    if (ip.StartsWith("127.") || ip.StartsWith("169.254.")) continue;
-                    own.Add(ip);
-                    string prefix = ip.Substring(0, ip.LastIndexOf('.'));
-                    if (!prefixes.Contains(prefix)) prefixes.Add(prefix);
-                }
-            }
-        } catch (Exception) {}
-        var known = Neighbors().Where(ip => prefixes.Contains(ip.Substring(0, ip.LastIndexOf('.'))) && !own.Contains(ip)).ToList();
-        List<string> found = Probe(known, 1200);
-        if (found.Count > 0 || !wholeNetwork) return found;
-        foreach (string prefix in prefixes) {
-            var all = new List<string>();
-            for (int n = 1; n <= 254; n++) {
-                string ip = prefix + "." + n;
-                if (!own.Contains(ip) && !known.Contains(ip)) all.Add(ip);
-            }
-            for (int i = 0; i < all.Count && found.Count == 0; i += 24) {
-                found.AddRange(Probe(all.Skip(i).Take(24).ToList(), 500));
-            }
-            if (found.Count > 0) break;
-        }
-        return found;
-    }
-
-    /** Celles de `ips` qui acceptent une connexion sur le port 5555 en moins de `ms` (une TV répond en quelques ms). */
-    static List<string> Probe(List<string> ips, int ms) {
-        var clients = new List<TcpClient>();
-        var tasks = new List<Task>();
-        foreach (string ip in ips) {
-            var c = new TcpClient();
-            try { tasks.Add(c.ConnectAsync(ip, 5555)); clients.Add(c); }
-            catch (Exception) { c.Close(); }
-        }
-        try { Task.WaitAll(tasks.ToArray(), ms); } catch (AggregateException) {}
-        var found = new List<string>();
-        for (int i = 0; i < tasks.Count; i++) {
-            if (tasks[i].Status == TaskStatus.RanToCompletion) found.Add(ips[i]);
-        }
-        foreach (var c in clients) { try { c.Close(); } catch (Exception) {} }
-        foreach (var t in tasks) { var ignored = t.Exception; }   // marque les erreurs comme vues
-        return found;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct IpNetRow {
-        public int Index, PhysAddrLen;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)] public byte[] PhysAddr;
-        public uint Addr;
-        public int Type;
-    }
-
-    [DllImport("iphlpapi.dll")] static extern int GetIpNetTable(IntPtr table, ref int size, bool sort);
-
-    /** Les adresses IPv4 que Windows a vues récemment sur le réseau (« arp -a »), sans rien envoyer. */
-    static List<string> Neighbors() {
-        var list = new List<string>();
-        try {
-            int size = 0;
-            GetIpNetTable(IntPtr.Zero, ref size, false);
-            if (size <= 0) return list;
-            IntPtr buffer = Marshal.AllocHGlobal(size);
-            try {
-                if (GetIpNetTable(buffer, ref size, false) != 0) return list;
-                int count = Marshal.ReadInt32(buffer), rowSize = Marshal.SizeOf(typeof(IpNetRow));
-                for (int i = 0; i < count; i++) {
-                    var row = (IpNetRow) Marshal.PtrToStructure(IntPtr.Add(buffer, 4 + i * rowSize), typeof(IpNetRow));
-                    if (row.Type != 3 && row.Type != 4) continue;   // dynamique ou statique (pas « invalide »)
-                    var ip = new IPAddress(row.Addr).GetAddressBytes();
-                    if (ip[0] >= 224 || ip[3] == 0 || ip[3] == 255) continue;   // multidiffusion, réseau, diffusion
-                    string text = string.Join(".", ip);
-                    if (!list.Contains(text)) list.Add(text);
-                }
-            } finally {
-                Marshal.FreeHGlobal(buffer);
-            }
-        } catch (Exception) {}   // pas Windows (essais), ou pas de table
-        return list;
-    }
-
-    /** La TV de la dernière fois, si elle répond. */
-    public static string LastTV() {
-        string address = Normalize(Recall("ip"));
-        if (address == null) return null;
-        string[] parts = address.Split(':');
-        using (var c = new TcpClient()) {
-            try { return c.ConnectAsync(parts[0], int.Parse(parts[1])).Wait(1500) && c.Connected ? Display(address) : null; }
-            catch (Exception) { return null; }
-        }
-    }
+    // MARK: - Adresses (la recherche des TV est dans Discovery.cs)
 
     /** "1.2.3.4" → "1.2.3.4:5555" ; "1.2.3.4:37000" tel quel ; sinon null. */
     public static string Normalize(string a) {

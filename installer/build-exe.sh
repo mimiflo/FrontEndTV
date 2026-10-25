@@ -45,5 +45,5 @@ EXTRA="-codepage:65001 -win32manifest:$(p installer/app.manifest)"; [ "$CSC" = m
 "$CSC" -nologo $EXTRA -optimize+ -target:winexe -win32icon:"$(p out/app.ico)" \
   -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:System.Numerics.dll \
   -resource:"$(p app/res/drawable-nodpi/icon.png)",icon.png -resource:"$(p out/app.ico)",app.ico \
-  -out:FrontEndTV-Installateur.exe "$(p installer/Program.cs)" "$(p installer/Engine.cs)" "$(p installer/Adb.cs)" "$(p out/BuildInfo.cs)"
+  -out:FrontEndTV-Installateur.exe "$(p installer/Program.cs)" "$(p installer/Engine.cs)" "$(p installer/Discovery.cs)" "$(p installer/Adb.cs)" "$(p out/BuildInfo.cs)"
 echo "Built FrontEndTV-Installateur.exe ($(du -h FrontEndTV-Installateur.exe | cut -f1)) for FrontEndTV $VERSION."
