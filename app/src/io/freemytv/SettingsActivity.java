@@ -516,7 +516,7 @@ public class SettingsActivity extends Activity {
                     int st = Updater.state();
                     rowValue.setColor(st == Updater.AVAILABLE ? blend(0xFFC9B8FF, 0xFFFFFFFF, f)
                             : st == Updater.FAILED ? blend(AMBER, 0xFFFFE2B0, f) : blend(0x8CFFFFFF, 0xD9FFFFFF, f));
-                    String shown = TextUtils.ellipsize(Updater.label(), new TextPaint(rowValue), 520 * k, TextUtils.TruncateAt.END).toString();
+                    String shown = TextUtils.ellipsize(Updater.label(), new TextPaint(rowValue), 440 * k, TextUtils.TruncateAt.END).toString();
                     c.drawText(shown, right, base, rowValue);
                     if (Updater.working()) {
                         spinner.setColor(blend(0xFFFFFFFF, INK, f));

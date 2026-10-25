@@ -1,4 +1,4 @@
-## FrontEndTV 1.2
+## FrontEndTV 1.2.1
 
 - **Mise à jour depuis la TV** : Réglages de FrontEndTV → *Mise à jour*. Quand une nouvelle version sort, OK la télécharge et l'installe toute seule.
 - **Nouvel installateur Windows** : `FrontEndTV-Installateur.exe`, un seul fichier. Il trouve la TV tout seul, installe et active FrontEndTV, sans rien d'autre à télécharger.
