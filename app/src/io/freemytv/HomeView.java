@@ -3446,8 +3446,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Symbols.warm(getContext(), it.symbol, 27 * k);
             Symbols.warm(getContext(), it.symbol, 27 * k * 1.1f);
         }
-        Symbols.warm(getContext(), "live_tv", TV_ICON * k);
-        Symbols.warm(getContext(), "live_tv", TV_ICON * k * 1.06f);
         Symbols.warmWeather(getContext(), 40 * k);
         heroDirty = statusDirty = true;
     }
@@ -3914,12 +3912,32 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawRoundRect(cell, rad, rad, fill);
         }
         float icon = TV_ICON * k * s, x = cell.left + 24 * k * s;
-        Symbols.draw(getContext(), c, "live_tv", x + icon / 2, cell.centerY(), icon, blend(tone(TV_VIOLET, TV_LILAC), TV_VIOLET, f));
+        drawTvGlyph(c, x + icon / 2, cell.centerY(), icon, blend(tone(TV_VIOLET, TV_LILAC), TV_VIOLET, f));
         lTvLabel.setColor(blend(tone(L_INK, 0xEBFFFFFF), L_INK, f));
         lTvLabel.setTextSize(28 * k * s);
         c.drawText(tvLabel(), x + icon + 12 * k * s, cell.centerY() + Ui.halfCap(lTvLabel), lTvLabel);
         lTvLabel.setTextSize(28 * k);
     }
+
+    /**
+     * The TV of FrontEndTV's logo, drawn (sharp at any size): a rounded screen outline and its stand, `size` wide,
+     * centered on (cx, cy).
+     */
+    private void drawTvGlyph(Canvas c, float cx, float cy, float size, int color) {
+        float w = size, h = size * 0.68f, stroke = size * 0.12f, top = cy - (h + size * 0.2f) / 2;
+        tvGlyph.setColor(color);
+        tvGlyph.setStyle(Paint.Style.STROKE);
+        tvGlyph.setStrokeWidth(stroke);
+        tvRect.set(cx - w / 2 + stroke / 2, top + stroke / 2, cx + w / 2 - stroke / 2, top + h - stroke / 2);
+        c.drawRoundRect(tvRect, size * 0.14f, size * 0.14f, tvGlyph);
+        tvGlyph.setStyle(Paint.Style.FILL);
+        float sw = size * 0.42f, sy = top + h + size * 0.1f, sh = size * 0.1f;
+        tvRect.set(cx - sw / 2, sy, cx + sw / 2, sy + sh);
+        c.drawRoundRect(tvRect, sh / 2, sh / 2, tvGlyph);
+    }
+
+    private final Paint tvGlyph = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF tvRect = new RectF();
 
     /** The home screen opens on the TV button (and comes back to it with Home or from an app), when the TV has one. */
     private void focusTv(boolean snap) {

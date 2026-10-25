@@ -21,6 +21,9 @@ import android.view.KeyEvent;
  * (partnercustomizer) turns into PatchWall. The filter sees it first, and by default it opens the home screen.
  * On Xiaomi TVs sold in Russia, the Okko, VK, Rutube, KION, Wink and IVI buttons are global keys too, for Xiaomi's
  * hot-key receiver (partnercustomizer's GlobalKeyReceiver).
+ * On every other TV (Philips and the rest; not Fire TV), the person teaches FrontEndTV the buttons: Settings > Remote
+ * Buttons > Learn a button, then a press on it. A button is known by its scan code (the remote's own code, which tells
+ * apart buttons that share a key code), or its key code when it has none.
  */
 final class RemoteKeys {
     private RemoteKeys() {}
@@ -41,8 +44,85 @@ final class RemoteKeys {
     /** Brands whose Netflix button is STEM_1, a global key (MediaTek): only that button is ours. */
     static final boolean STEM_NETFLIX = VESTEL || FORMOVIE;
 
+    /** Brands whose app buttons FrontEndTV knows by their codes. */
+    static final boolean KNOWN = TCL || STEM_NETFLIX || KTC || SONY || XIAOMI;
+    /** Every other TV: its buttons are learned (not Fire TV, where Amazon keeps the keys). */
+    static final boolean LEARNED = !KNOWN && !is("Amazon");
+    /** A learned button with a scan code: SCAN_KEY + scan code. */
+    static final int SCAN_KEY = 300_000;
+
     static boolean supported() {
-        return TCL || STEM_NETFLIX || KTC || SONY || XIAOMI;
+        return KNOWN || LEARNED;
+    }
+
+    /** What a learned button is known by. */
+    static int id(KeyEvent e) {
+        return e.getScanCode() > 0 ? SCAN_KEY + e.getScanCode() : e.getKeyCode();
+    }
+
+    /** Buttons that can be learned: not the ones that move around, go back or home, or set the volume or the power. */
+    static boolean learnable(KeyEvent e) {
+        switch (e.getKeyCode()) {
+            case KeyEvent.KEYCODE_DPAD_UP: case KeyEvent.KEYCODE_DPAD_DOWN: case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT: case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER: case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_ESCAPE:
+            case KeyEvent.KEYCODE_HOME: case KeyEvent.KEYCODE_MENU: case KeyEvent.KEYCODE_VOLUME_UP:
+            case KeyEvent.KEYCODE_VOLUME_DOWN: case KeyEvent.KEYCODE_VOLUME_MUTE: case KeyEvent.KEYCODE_MUTE:
+            case KeyEvent.KEYCODE_POWER: case KeyEvent.KEYCODE_TV_POWER: case KeyEvent.KEYCODE_SLEEP:
+            case KeyEvent.KEYCODE_WAKEUP: case KeyEvent.KEYCODE_UNKNOWN:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    // Learning: the settings (process :home) leave a file while they wait for a press; the key service (process :keys,
+    // which sees the buttons first, even those the TV keeps for itself, like Netflix's) writes the one it heard.
+
+    private static java.io.File learnFile(Context c) { return new java.io.File(c.getFilesDir(), "remote-learn"); }
+    private static java.io.File heardFile(Context c) { return new java.io.File(c.getFilesDir(), "remote-heard"); }
+
+    static void startLearning(Context c) {
+        //noinspection ResultOfMethodCallIgnored
+        heardFile(c).delete();
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(learnFile(c))) {
+            out.write('1');
+        } catch (java.io.IOException ignored) {
+        }
+    }
+
+    static void stopLearning(Context c) {
+        //noinspection ResultOfMethodCallIgnored
+        learnFile(c).delete();
+    }
+
+    /** The button heard while learning (its id), or 0. */
+    static int heard(Context c) {
+        java.io.File f = heardFile(c);
+        if (!f.exists()) return 0;
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(f))) {
+            return Integer.parseInt(r.readLine().trim());
+        } catch (java.io.IOException | RuntimeException e) {
+            return 0;
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            f.delete();
+        }
+    }
+
+    /** Waiting for a press (for a minute at most, in case the settings were left without stopping). */
+    private static boolean learning(Context c) {
+        java.io.File f = learnFile(c);
+        long age = System.currentTimeMillis() - f.lastModified();
+        return f.exists() && age >= 0 && age < 60_000;
+    }
+
+    private static void hear(Context c, int id) {
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(heardFile(c))) {
+            out.write(String.valueOf(id).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.io.IOException ignored) {
+        }
+        stopLearning(c);
     }
 
     private static boolean is(String maker) {
@@ -57,6 +137,14 @@ final class RemoteKeys {
         if ((source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
                 || (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) return false;
         int keyCode = e.getKeyCode() == KEY_YOUTUBE_TCL ? Prefs.KEY_YOUTUBE : e.getKeyCode();
+        if (LEARNED) {
+            if (!learnable(e)) return false;   // the arrows, OK, Back... are never touched
+            if (learning(c)) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) hear(c, id(e));
+                return true;   // heard for the settings, nothing else happens
+            }
+            keyCode = id(e);
+        }
         // Sony sends BUTTON_9 for five app buttons (BUTTON_4 for Netflix, BUTTON_8 for Google Play): only the scan code
         // tells them apart.
         if (SONY && (keyCode == KeyEvent.KEYCODE_BUTTON_4 || keyCode == KeyEvent.KEYCODE_BUTTON_8
@@ -64,7 +152,7 @@ final class RemoteKeys {
             keyCode = Prefs.SONY_KEY + e.getScanCode();
         }
         boolean ours = false;
-        for (int key : Prefs.KEYS) ours |= key == keyCode;
+        for (int key : Prefs.keys()) ours |= key == keyCode;
         if (!ours) return false;
         String pkg = Prefs.keyApp(keyCode);
         if (pkg.isEmpty()) return false;   // "Nothing": the key goes on as if we weren't here

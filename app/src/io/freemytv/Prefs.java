@@ -48,6 +48,7 @@ final class Prefs {
             : RemoteKeys.KTC ? new int[] {KEY_KTC_TABII}
             : RemoteKeys.XIAOMI ? new int[] {KEY_MI, KEY_XIAOMI_OKKO, KEY_XIAOMI_VK, KEY_XIAOMI_RUTUBE, KEY_XIAOMI_KION,
                     KEY_XIAOMI_WINK, KEY_XIAOMI_IVI}
+            : RemoteKeys.LEARNED ? new int[0]   // learned ones: keys()
             : new int[] {KEY_NETFLIX, KEY_YOUTUBE, KEY_PRIME, KEY_TCL_CHANNEL};
 
     /** Bumped by every change: screens compare it to know when to redraw. */
@@ -255,8 +256,11 @@ final class Prefs {
         return new File(app.getFilesDir(), "remote-keys.txt");
     }
 
-    private static final String[] keyApps = new String[KEYS.length];   // null = the default
+    // The file holds "button=package" lines. For the brands we know, a line per button of KEYS; for the others, a line
+    // per learned button, in the order they were learned ("-": learned, no app picked yet).
+    private static final java.util.LinkedHashMap<Integer, String> keyMap = new java.util.LinkedHashMap<>();
     private static long keysStamp = Long.MIN_VALUE;
+    private static int[] learned = new int[0];
 
     /** A temporary file per process (two can start together after an update), synced before it replaces the old one. */
     private static boolean writeKeys(String text) {
@@ -284,35 +288,85 @@ final class Prefs {
         writeKeys(sb.toString());
     }
 
-    /** Package the key opens ("" = nothing). */
-    static String keyApp(int keyCode) {
-        synchronized (keyApps) {
-            File f = keysFile();
-            long stamp = f.lastModified() * 31 + f.length();   // 0 without the file: every key opens its default
-            if (stamp != keysStamp) {
-                keysStamp = stamp;
-                java.util.Arrays.fill(keyApps, null);
-                if (stamp != 0) {
-                    try (BufferedReader r = new BufferedReader(new FileReader(f))) {
-                        String line;
-                        while ((line = r.readLine()) != null) {
-                            for (int i = 0; i < KEYS.length; i++) {
-                                String prefix = KEYS[i] + "=";
-                                if (line.startsWith(prefix)) keyApps[i] = line.substring(prefix.length());
-                            }
-                        }
-                    } catch (IOException ignored) {
+    /** Reads the file again if it changed (call holding keyMap). */
+    private static void loadKeys() {
+        File f = keysFile();
+        long stamp = f.lastModified() * 31 + f.length();   // 0 without the file: every key opens its default
+        if (stamp == keysStamp) return;
+        keysStamp = stamp;
+        keyMap.clear();
+        if (stamp != 0) {
+            try (BufferedReader r = new BufferedReader(new FileReader(f))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    int eq = line.indexOf('=');
+                    if (eq <= 0) continue;
+                    try {
+                        int key = Integer.parseInt(line.substring(0, eq));
+                        if (RemoteKeys.LEARNED || contains(KEYS, key)) keyMap.put(key, line.substring(eq + 1));
+                    } catch (NumberFormatException ignored) {
                     }
                 }
+            } catch (IOException ignored) {
             }
-            for (int i = 0; i < KEYS.length; i++) if (KEYS[i] == keyCode && keyApps[i] != null) return keyApps[i];
-            return defaultApp(keyCode);
+        }
+        learned = new int[keyMap.size()];
+        int i = 0;
+        for (int key : keyMap.keySet()) learned[i++] = key;
+    }
+
+    private static boolean contains(int[] list, int key) {
+        for (int k : list) if (k == key) return true;
+        return false;
+    }
+
+    /** The remote's buttons we handle: the brand's (KEYS), or the learned ones. */
+    static int[] keys() {
+        if (!RemoteKeys.LEARNED) return KEYS;
+        synchronized (keyMap) {
+            loadKeys();
+            return learned.clone();
         }
     }
 
+    /** Package the key opens ("" = nothing). */
+    static String keyApp(int keyCode) {
+        synchronized (keyMap) {
+            loadKeys();
+            String pkg = keyMap.get(keyCode);
+            if (pkg == null) return RemoteKeys.LEARNED ? "" : defaultApp(keyCode);
+            return pkg.equals("-") ? "" : pkg;
+        }
+    }
+
+    /** Sets the app a button opens; for a learned button, "" (nothing) forgets the button. */
     static void setKeyApp(int keyCode, String pkg) {
         StringBuilder sb = new StringBuilder();
-        for (int key : KEYS) sb.append(key).append('=').append(key == keyCode ? pkg : keyApp(key)).append('\n');
+        synchronized (keyMap) {
+            loadKeys();
+            if (RemoteKeys.LEARNED) {
+                for (java.util.Map.Entry<Integer, String> e : keyMap.entrySet()) {
+                    if (e.getKey() != keyCode) sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
+                    else if (!pkg.isEmpty()) sb.append(keyCode).append('=').append(pkg).append('\n');
+                }
+            } else {
+                for (int key : KEYS) sb.append(key).append('=').append(key == keyCode ? pkg : keyApp(key)).append('\n');
+            }
+        }
         if (writeKeys(sb.toString())) version++;
+        synchronized (keyMap) { keysStamp = Long.MIN_VALUE; }   // read again here even if the date looks the same
+    }
+
+    /** A button just learned: added to the list (no app yet) if it isn't there. */
+    static void learnKey(int id) {
+        StringBuilder sb = new StringBuilder();
+        synchronized (keyMap) {
+            loadKeys();
+            if (keyMap.containsKey(id)) return;
+            for (java.util.Map.Entry<Integer, String> e : keyMap.entrySet()) sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
+            sb.append(id).append("=-\n");
+        }
+        if (writeKeys(sb.toString())) version++;
+        synchronized (keyMap) { keysStamp = Long.MIN_VALUE; }   // read again here even if the date looks the same
     }
 }

@@ -9,7 +9,7 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | Dossier / fichier | Rôle |
 |---|---|
 | `app/src/io/freemytv/` | Code Java de l'appli (identifiant Android `io.freemytv`, à ne pas changer : les mises à jour en dépendent) |
-| `HomeView.java` | L'écran d'accueil natif (vue unique dessinée à la main, calques `Layer`, ressorts `Spring`, horloge d'animation lissée). Bouton TV : pilule de verre en haut, icône violette et « TV » (`drawTvButton`, clé `TOP_LIVE`), focus dessus à l'ouverture, au bouton Accueil et au retour d'une appli (`focusTv`). Heure : chiffres qui roulent à chaque minute (`drawClockText`) |
+| `HomeView.java` | L'écran d'accueil natif (vue unique dessinée à la main, calques `Layer`, ressorts `Spring`, horloge d'animation lissée). Bouton TV : pilule de verre en haut, TV du logo dessinée en vectoriel (`drawTvGlyph`) et « TV » (`drawTvButton`, clé `TOP_LIVE`), focus dessus à l'ouverture, au bouton Accueil et au retour d'une appli (`focusTv`). Heure : chiffres qui roulent à chaque minute (`drawClockText`) |
 | `SettingsActivity.java` | Écran des réglages (thème violet) : 9 lignes en 3 rubriques (`SECTION_AT`), une phrase sous chacune, l'état (mise à jour, erreur) sous le logo (`drawStatus`), la comparaison dans « Écran d'accueil » ; reçoit aussi les réglages envoyés par l'installateur |
 | `HomeMode.java` / `ModeJob.java` | Bascule « FrontEndTV ⇄ Original » (désactive/réactive les applis du constructeur via l'ADB de la TV) |
 | `HomeApps.java` | Dock (`SHELF`), tiroir, logos extraits des bannières des applis |
@@ -17,11 +17,12 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | `Recs.java` | Recommandations TMDB (clé : `Prefs.tmdbKey()`, pays : `Prefs.tmdbRegion()`) |
 | `Prefs.java` | Réglages persistants (prénom, clé TMDB, pays, ville…) |
 | `app/assets/i18n/*.json` | Traductions (clé = texte anglais) |
-| `app/res/drawable-nodpi/` | `icon.png` (192×192) et `banner.png` (640×360) |
+| `app/res/drawable-nodpi/` | `icon.png` (512×512) et `banner.png` (1280×720), dessinés par `tools/make_art.py` (`python3 tools/make_art.py`, Pillow ; ne pas retoucher à la main) |
+| `RemoteKeys.java` / `RemoteKeyService.java` | Touches d'applis de la télécommande : codes connus (TCL, Vestel, KTC, Sony, Xiaomi, Formovie) ; ailleurs (Philips…) touches **apprises** (Boutons de la télécommande → Apprendre une touche ; code de balayage, sinon code de touche ; fichiers `remote-learn` / `remote-heard` entre les processus) |
 | `installer/Program.cs` | Installateur Windows `FrontEndTV-Installateur.exe` : la fenêtre (thème sombre/violet, WinForms) |
 | `installer/Engine.cs` | Installateur : tout le travail avec la TV, sans interface |
 | `installer/Adb.cs` | Installateur : client ADB intégré (clé RSA, `shell:`, installation par `exec:cmd package install -S`) — pas d'adb.exe |
-| `installer/MakeIcon.java` | `build-exe.sh` : icône `.ico` en 10 tailles (16 → 192 px) à partir de `icon.png` |
+| `installer/MakeIcon.java` | `build-exe.sh` : icône `.ico` en 11 tailles (16 → 256 px) à partir de `icon.png` |
 | `installer/build-exe.sh` | Fabrique l'exe (appelé par `build.sh`, ou seul sur Windows) : `out/BuildInfo.cs` (version, URL et SHA-256 de l'APK), manifeste `app.manifest` |
 | `installer/check-exe.ps1` | Compilation GitHub sur Windows : lance l'exe en `-SelfTest` (fenêtre en images) et l'analyse avec Windows Defender |
 | `.claude/skills/find-skills/` | Skill « find-skills » (vercel-labs/skills, MIT) : chercher et installer d'autres skills (`npx skills`) |

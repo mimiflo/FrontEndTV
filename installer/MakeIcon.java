@@ -12,12 +12,12 @@ import javax.imageio.ImageIO;
 
 /**
  * build.sh : fabrique l'icône Windows de l'installateur (.ico) à partir de l'icône de l'appli, en toutes les tailles
- * qu'utilise Windows (16 à 192 px, réduites avec soin) : nette dans la barre de titre, la barre des tâches et
+ * qu'utilise Windows (16 à 256 px, réduites avec soin) : nette dans la barre de titre, la barre des tâches et
  * l'Explorateur, à toutes les échelles d'affichage.
  * Usage : java installer/MakeIcon.java app/res/drawable-nodpi/icon.png out/app.ico
  */
 class MakeIcon {
-    static final int[] SIZES = {16, 20, 24, 32, 40, 48, 64, 96, 128, 192};
+    static final int[] SIZES = {16, 20, 24, 32, 40, 48, 64, 96, 128, 192, 256};
 
     public static void main(String[] args) throws Exception {
         BufferedImage source = ImageIO.read(new File(args[0]));

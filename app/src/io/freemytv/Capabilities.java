@@ -27,7 +27,9 @@ final class Capabilities {
             case NEED_ADB:
                 return adb(c) ? null : Ui.tr("Needs FrontEndTV mode: turn it on in Home Screen.");
             case NEED_REMOTE_BUTTONS:
-                return remoteButtons() ? null : Ui.tr("This TV's remote has no app buttons that FrontEndTV knows.");
+                if (!remoteButtons()) return Ui.tr("This TV's remote has no app buttons that FrontEndTV knows.");
+                // Learned buttons are heard by the key service, which FrontEndTV mode turns on (through ADB)
+                return RemoteKeys.LEARNED && !adb(c) ? Ui.tr("Needs FrontEndTV mode: turn it on in Home Screen.") : null;
             case NEED_OVERLAY:
                 return overlay(c) ? null : Ui.tr("This TV doesn't let apps show over other apps: the time left shows on the home screen.");
             case NEED_LIVE_TV:

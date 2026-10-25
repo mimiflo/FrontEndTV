@@ -1,7 +1,7 @@
-## FrontEndTV 1.4
+## FrontEndTV 1.5
 
-- **Menu de FrontEndTV refait** : trois rubriques (Accueil, Télécommande et veille, TV et mises à jour), une phrase sous chaque ligne pour dire à quoi elle sert, et ce qui se passe (nouvelle version, message à suivre sur la TV) affiché sous le logo. Le tableau de comparaison est dans *Écran d'accueil*.
-- **Mises à jour cherchées toutes les 30 minutes**, même sans ouvrir les réglages : en ouvrant le menu, une nouvelle version est déjà annoncée (une pastille sous le logo et un point sur la ligne *Mise à jour*).
-- **Bouton TV plus sobre** : le même verre que les boutons voisins, l'icône en violet et « TV » en clair ; il devient blanc quand il est sélectionné.
+- **Touches de la télécommande sur toutes les TV** (Philips et les autres marques) : Réglages de FrontEndTV → *Boutons de la télécommande* → *Apprendre une touche*, puis appuie sur la touche (Netflix, YouTube…) et choisis l'appli qu'elle ouvre. « Rien » oublie la touche. Il faut le mode FrontEndTV.
+- **Nouvelle icône**, nette à toutes les tailles (512 px au lieu de 192), et une nouvelle bannière pour l'écran d'accueil de la TV.
+- **Bouton TV** : son icône est maintenant la TV du logo FrontEndTV, dessinée nette.
 
 **Mettre à jour** : sur la TV, Réglages de FrontEndTV → *Mise à jour*. Ou télécharge `FrontEndTV-Installateur.exe` et double-clique dessus.

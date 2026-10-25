@@ -208,6 +208,11 @@ public class SettingsActivity extends Activity {
             @Override public void run() {
                 if (!running) return;
                 state = HomeMode.state(getContext());
+                if (learning) {
+                    int heard = RemoteKeys.heard(getContext());
+                    if (heard != 0) learned(heard);
+                    else if (SystemClock.uptimeMillis() - learnAt > 45_000) stopLearning();
+                }
                 sleepLeft = SleepTimer.minutesLeft(getContext());
                 hasKey = Recs.hasKey(getContext());
                 recs = Recs.status(getContext());
@@ -225,7 +230,7 @@ public class SettingsActivity extends Activity {
                 }
                 wasBusy = nowBusy;
                 invalidate();
-                handler.postDelayed(this, busy() || Updater.working() ? 500 : 2000);
+                handler.postDelayed(this, learning ? 250 : busy() || Updater.working() ? 500 : 2000);
             }
         };
 
@@ -349,6 +354,7 @@ public class SettingsActivity extends Activity {
         }
 
         void pause() {
+            if (learning) stopLearning();
             running = false;
             handler.removeCallbacks(poll);
             Choreographer.getInstance().removeFrameCallback(this);
@@ -420,7 +426,7 @@ public class SettingsActivity extends Activity {
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
                 case POWER: return powerRows().length;
-                default: return Prefs.KEYS.length;
+                default: return Prefs.keys().length + (RemoteKeys.LEARNED ? 1 : 0);   // + "Learn a button"
             }
         }
 
@@ -575,6 +581,41 @@ public class SettingsActivity extends Activity {
         }
 
         private final Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        // MARK: - Learning a remote button (TVs whose buttons FrontEndTV doesn't know: Philips...)
+
+        private boolean learning;
+        private long learnAt;
+
+        private void startLearning() {
+            learning = true;
+            learnAt = SystemClock.uptimeMillis();
+            RemoteKeys.startLearning(getContext());
+            handler.removeCallbacks(poll);
+            handler.post(poll);
+            invalidate();
+        }
+
+        private void stopLearning() {
+            learning = false;
+            RemoteKeys.stopLearning(getContext());
+            invalidate();
+        }
+
+        /** A button was pressed: it joins the list, and the app picker opens for it. */
+        private void learned(int id) {
+            stopLearning();
+            Prefs.learnKey(id);
+            int[] keys = Prefs.keys();
+            for (int i = 0; i < keys.length; i++) {
+                if (keys[i] == id) {
+                    openPicker(i + 1);
+                    break;
+                }
+            }
+            for (Spring s : pop) s.snap(0);
+            invalidate();
+        }
 
         /** `text` cut to fit `width`, with "…" where it was cut. */
         private static String fit(String text, Paint p, float width) {
@@ -768,6 +809,14 @@ public class SettingsActivity extends Activity {
 
         boolean onKey(KeyEvent e) {
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+            if (learning) {
+                if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+                    if (!down) stopLearning();
+                } else if (RemoteKeys.learnable(e) && down && e.getRepeatCount() == 0) {
+                    learned(RemoteKeys.id(e));
+                }
+                return true;
+            }
             switch (e.getKeyCode()) {
                 case KeyEvent.KEYCODE_DPAD_UP:
                     if (down && focus > 0) focus--;
@@ -1050,6 +1099,13 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] keyLabels() {
+            if (RemoteKeys.LEARNED) {
+                int n = Prefs.keys().length;
+                String[] l = new String[n + 1];
+                for (int i = 0; i < n; i++) l[i] = Ui.trf("Button {n}", "n", i + 1);
+                l[n] = Ui.tr("+ Learn a button");
+                return l;
+            }
             if (RemoteKeys.STEM_NETFLIX) return new String[] {Ui.tr("Netflix button")};
             if (RemoteKeys.KTC) return new String[] {Ui.tr("Tabii button")};
             if (RemoteKeys.XIAOMI) return new String[] {Ui.tr("Mi button"), Ui.tr("Okko button"), Ui.tr("VK button"),
@@ -1063,9 +1119,11 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] keyValues() {
-            String[] v = new String[Prefs.KEYS.length];
-            for (int i = 0; i < v.length; i++) {
-                int at = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[i]));
+            int n = Prefs.keys().length;
+            String[] v = new String[n + (RemoteKeys.LEARNED ? 1 : 0)];
+            if (RemoteKeys.LEARNED) v[n] = learning ? Ui.tr("Press it…") : "";
+            for (int i = 0; i < n; i++) {
+                int at = appPkgs.indexOf(Prefs.keyApp(Prefs.keys()[i]));
                 v[i] = at >= 0 ? appLabels.get(at) : Ui.tr("Not installed");
             }
             return v;
@@ -1113,10 +1171,11 @@ public class SettingsActivity extends Activity {
                 return;
             }
             if (screen == REMOTE_KEYS) {
+                if (focus >= Prefs.keys().length) return;   // the "Learn a button" row
                 int n = appPkgs.size();
-                int at = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[focus]));
+                int at = appPkgs.indexOf(Prefs.keyApp(Prefs.keys()[focus]));
                 int next = at < 0 ? (dir > 0 ? 0 : n - 1) : (at + dir + n) % n;
-                Prefs.setKeyApp(Prefs.KEYS[focus], appPkgs.get(next));
+                Prefs.setKeyApp(Prefs.keys()[focus], appPkgs.get(next));
                 return;
             }
             int row = pickScroll + focus;
@@ -1345,7 +1404,7 @@ public class SettingsActivity extends Activity {
                 }
             } else {
                 pickLabels.addAll(appLabels);
-                pickCurrent = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[which - 1]));
+                pickCurrent = appPkgs.indexOf(Prefs.keyApp(Prefs.keys()[which - 1]));
             }
             int visible = Math.min(PICK_VISIBLE, pickLabels.size());
             int at = Math.max(0, pickCurrent);
@@ -1412,7 +1471,12 @@ public class SettingsActivity extends Activity {
             // A list longer than the screen says where we are in it, as the app picker does. Photos say where they come
             // from; on the Sleep Timer screen, the timer and Position open a list on OK.
             String where = rows < labels.length ? (from + focus + 1) + " / " + labels.length + "  ·  " : "";
-            c.drawText(where + (screen == HOME_SETTINGS && from + focus == PHOTOS_ROW ? (Photos.files(getContext()).isEmpty()
+            if (keys && learning) {
+                c.drawText(Ui.tr("Press the button on the remote. Back cancels."), LIST_X * k + 30 * k, hy, warn);
+                return;
+            }
+            c.drawText(where + (keys && RemoteKeys.LEARNED && focus >= Prefs.keys().length
+                    ? Ui.tr("OK, then press a button of the remote: you pick what it opens.") : screen == HOME_SETTINGS && from + focus == PHOTOS_ROW ? (Photos.files(getContext()).isEmpty()
                     ? Ui.tr("Send them from a computer: see “Your own photos” in the README.")
                     : Ui.tr("OK removes them; the arrows turn them on or off."))
                     : screen == POWER && powerRow() != P_SHOW && unavailable(focus) == null ? Ui.tr("OK opens the list. ← → change the value.")
@@ -1423,6 +1487,7 @@ public class SettingsActivity extends Activity {
                         : RemoteKeys.SONY ? Ui.tr("Sony default: the button opens what it always did.")
                         : RemoteKeys.FORMOVIE ? Ui.tr("The other buttons: the TV itself controls them.")
                         : RemoteKeys.XIAOMI ? Ui.tr("Xiaomi default: the button opens what it always did.")
+                        : RemoteKeys.LEARNED ? Ui.tr("Nothing forgets the button: it works as before.")
                         : RemoteKeys.supported() ? Ui.tr("Disney and Globoplay: the TV itself controls those buttons.")
                         : Ui.tr("TCL remote buttons: on this TV they work as always."), LIST_X * k + 30 * k, hy + 38 * k, hint);
             }
@@ -1457,13 +1522,15 @@ public class SettingsActivity extends Activity {
                 screen = HOME_SETTINGS;
             } else if (screen == PICKER) {
                 int at = pickScroll + focus;
-                Prefs.setKeyApp(Prefs.KEYS[pickFor - 1], appPkgs.get(at));
-                focus = pickFor - 1;
+                Prefs.setKeyApp(Prefs.keys()[pickFor - 1], appPkgs.get(at));
                 screen = REMOTE_KEYS;
+                focus = Math.min(pickFor - 1, rowCount() - 1);   // "Nothing" forgets a learned button: one row less
             } else if (screen == SHELF_EDIT) {
                 toggleShelfApp();
                 invalidate();
                 return;
+            } else if (screen == REMOTE_KEYS && focus >= Prefs.keys().length) {
+                startLearning();
             } else if (screen == REMOTE_KEYS) {
                 openPicker(focus + 1);
             } else if (screen == HOME_SETTINGS && pickScroll + focus == 0) {
