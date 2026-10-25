@@ -247,6 +247,10 @@ sealed class MainForm : Form, IReport {
             steps.Set(Engine.StepConnect, StepState.Done, "TCL Smart TV Pro · Android 11");
             steps.Set(Engine.StepInstall, StepState.Running, "Envoi de l'appli (1,4 Mo)... 45 %");
             Say(Tone.Action, "Regarde la TV : accepte « Autoriser le débogage USB ? » en cochant « Toujours autoriser ».");
+            retry.Visible = false;   // comme pendant une vraie installation
+            close.Text = "Annuler";
+            close.Left = S(32);
+            close.Width = S(456);
             Refresh();
             Snapshot(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(selfTest)),
                     Path.GetFileNameWithoutExtension(selfTest) + "-2.png"));
