@@ -127,7 +127,7 @@ else "${JAVA_HOME:+$JAVA_HOME/bin/}jar" -u -M -f out/base.apk -C out classes.dex
 # --- Sign with your own key (created once; updates need the same key, so keep freemytv.keystore)
 if [ ! -f freemytv.keystore ]; then
   "$KEYTOOL" -genkeypair -keystore freemytv.keystore -alias freemytv -keyalg RSA -keysize 2048 -validity 20000 \
-    -storepass freemytv -keypass freemytv -dname "CN=Free My TV" >/dev/null 2>&1
+    -storepass freemytv -keypass freemytv -dname "CN=FrontEndTV, O=Florian" >/dev/null 2>&1
 fi
 "$BT/apksigner$BAT" sign --ks freemytv.keystore --ks-pass pass:freemytv --key-pass pass:freemytv --out FrontEndTV.apk out/aligned.apk
 echo "Built FrontEndTV.apk ($(du -h FrontEndTV.apk | cut -f1)). Install: adb install -r FrontEndTV.apk"

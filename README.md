@@ -1,7 +1,7 @@
 # FrontEndTV
 
 **Un écran d'accueil moderne, sombre et fluide pour les TV Android TV et Google TV.**
-Développé par Florian, à partir du projet libre [Free My TV](https://github.com/simbasjungles/free-my-tv) (licence MIT).
+Développé par Florian.
 
 ![Accueil](.github/captures/accueil.jpg)
 
@@ -89,8 +89,7 @@ propre client ADB, pour ne dépendre d'aucun outil externe).
 
 ## Crédits
 
-- **FrontEndTV** : design, accueil natif fluide, recommandations et identité visuelle par Florian.
-- Basé sur **[Free My TV](https://github.com/simbasjungles/free-my-tv)** (© Free My TV contributors, licence MIT).
+- **FrontEndTV** : conçu et développé par Florian.
 - Recommandations : [TMDB](https://www.themoviedb.org) — ce produit utilise l'API TMDB sans être approuvé ni certifié
   par TMDB. Météo : [Open-Meteo](https://open-meteo.com). Police : [Inter](https://rsms.me/inter/) (OFL).
 

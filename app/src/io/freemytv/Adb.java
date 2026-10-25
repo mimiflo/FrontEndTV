@@ -318,7 +318,7 @@ final class Adb implements Closeable {
         b.put(littleEndian(n, 256));
         b.put(littleEndian(rr, 256));
         b.putInt(rsa.getPublicExponent().intValue());
-        String text = Base64.encodeToString(b.array(), Base64.NO_WRAP) + " free-my-tv@tv\0";
+        String text = Base64.encodeToString(b.array(), Base64.NO_WRAP) + " frontendtv@tv\0";
         return text.getBytes(StandardCharsets.US_ASCII);
     }
 

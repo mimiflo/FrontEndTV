@@ -1,7 +1,7 @@
 # FrontEndTV — guide pour Claude Code
 
-FrontEndTV est un écran d'accueil (launcher) pour **Google TV / Android TV**, développé par Florian à partir de
-Free My TV (licence MIT, crédit dans `LICENSE` et `README.md` — à garder). Le propriétaire parle **français** :
+FrontEndTV est un écran d'accueil (launcher) pour **Google TV / Android TV**, développé par Florian. Le propriétaire
+parle **français** :
 réponds en français, simplement, et demande avant toute action qui modifie sa TV.
 
 ## Arborescence
@@ -86,5 +86,6 @@ La TV de test (TCL Smart TV Pro, Mali-G31) affiche à **50 Hz** : 50 images/s es
 
 - Ne jamais publier une clé TMDB, une adresse ou une ville personnelle.
 - Ne pas modifier les réglages système de la TV sans l'accord du propriétaire.
-- Garder la mention de Free My TV dans `LICENSE` et `README.md` (licence MIT).
+- Le dépôt présente FrontEndTV comme le projet de Florian, sans autre source. Seule exception, obligatoire (licence
+  MIT) : les lignes de copyright de `LICENSE` et `app/assets/LICENSE.txt` restent telles quelles.
 - Ne **jamais** créer de pull request : commiter et pousser directement sur la branche **`main`**, à chaque fois.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sends your photos to the TV for Free My TV's screensaver and home screen (My Photos).
+"""Sends your photos to the TV for FrontEndTV's screensaver and home screen (My Photos).
 
     python3 tools/photos.py 192.168.1.50 beach.jpg hills.jpg Holidays/
     python3 tools/photos.py beach.jpg              # the TV adb is already connected to
@@ -7,7 +7,7 @@
 The photos go, in the order given (a folder's in name order), to the app's own folder on the TV
 (Android/data/io.freemytv/files/photos: adb can write there, and the app needs no permission); where the TV keeps adb
 out of it (Android 11, Fire OS 8), they go through the app itself (`content write` to its PhotoInbox, which only adb
-may use). The next time the home screen, the screensaver or Free My TV's settings open, the app imports each one
+may use). The next time the home screen, the screensaver or FrontEndTV's settings open, the app imports each one
 (upright, cropped to 16:9, at the screensaver's size, without its GPS and other tags) and deletes what was sent. Up to
 100 photos in all; remove them on the TV: Home Settings > My Photos > OK. JPEG, PNG and WebP; HEIC on Android 9 and
 newer.
@@ -67,16 +67,16 @@ def main():
         print('No TV connected: give its IP address first (adb devices lists the connected ones).')
         return 1
     if 'package:io.freemytv' not in listed.stdout.split():
-        print('Free My TV is not installed on this TV.')
+        print('FrontEndTV is not installed on this TV.')
         return 1
     # Android 11 (Fire OS 8 too) keeps adb out of other apps' Android/data folders: then through the app itself.
     direct = adb('shell', 'mkdir', '-p', INBOX).returncode == 0
     if not direct:
-        # exec-in brings back nothing the TV prints: check once that its Free My TV has the way in.
+        # exec-in brings back nothing the TV prints: check once that its FrontEndTV has the way in.
         probe = adb('shell', 'content', 'query', '--uri', 'content://io.freemytv.photos/')
         if 'Could not find provider' in probe.stdout + probe.stderr:
-            print('This TV keeps adb out of the app\'s folder, and the Free My TV on it is too old for the other way '
-                  'in: install the new FreeMyTV.apk (see Install), then send them again.')
+            print('This TV keeps adb out of the app\'s folder, and the FrontEndTV on it is too old for the other way '
+                  'in: install the new FrontEndTV.apk (see Install), then send them again.')
             return 1
     for i, path in enumerate(found):
         # Numbered so the app imports them in this order.
@@ -93,7 +93,7 @@ def main():
             print(f'Could not send {path}: {(r.stdout + r.stderr).strip()}')
             return 1
         print(f'Sent {path}')
-    print(f'{len(found)} photo(s) on the TV. Open the home screen or Free My TV\'s settings to import them.')
+    print(f'{len(found)} photo(s) on the TV. Open the home screen or FrontEndTV\'s settings to import them.')
     return 0
 
 
