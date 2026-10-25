@@ -1,53 +1,57 @@
-# Publie une version : à l'envoi d'un tag « v1.3 » (git tag v1.3 && git push origin v1.3), compile FrontEndTV.apk
-# signé avec TA clé et FrontEndTV-Installateur.exe, puis les joint à la Release v1.3. Les TV la trouvent ensuite avec
-# Réglages de FrontEndTV → Mise à jour.
+# Publie une version, toute seule : à chaque envoi sur main, si la version de app/AndroidManifest.xml
+# (versionName, ex. 1.3) n'a pas encore de Release « v1.3 », compile FrontEndTV.apk signé avec la clé de FrontEndTV et
+# FrontEndTV-Installateur.exe, puis crée la Release v1.3 avec les deux. Les TV la trouvent ensuite avec
+# Réglages de FrontEndTV → Mise à jour. Pour publier : augmenter versionCode et versionName, puis pousser sur main.
 #
-# Une seule fois : dans GitHub → Settings → Secrets and variables → Actions → New repository secret, ajoute
-# FREEMYTV_KEYSTORE = le contenu de freemytv.keystore en base64 (sous Git Bash : base64 -w0 freemytv.keystore).
-# Sans la même clé, la TV refuse la mise à jour.
-#
-# La version publique est compilée avec config.example.properties : aucune clé TMDB ni ville personnelle.
+# La clé est le secret FREEMYTV_KEYSTORE (freemytv.keystore en base64 : base64 -w0 freemytv.keystore). Sans la même
+# clé, la TV refuse la mise à jour. La version publique est compilée avec config.example.properties : aucune clé TMDB
+# ni ville personnelle.
 name: Publier une version
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency: release
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Version à publier ?
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEYSTORE: ${{ secrets.FREEMYTV_KEYSTORE }}
+        run: |
+          name="$(grep -o 'android:versionName="[^"]*"' app/AndroidManifest.xml | cut -d'"' -f2)"
+          echo "tag=v$name" >> "$GITHUB_OUTPUT"
+          if gh release view "v$name" > /dev/null 2>&1; then
+            echo "La Release v$name existe déjà : rien à publier."
+          elif [ -z "$KEYSTORE" ]; then
+            echo "::warning::Pas de secret FREEMYTV_KEYSTORE : la version $name n'est pas publiée."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-java@v5
+        if: steps.version.outputs.publish == 'true'
         with:
           distribution: temurin
           java-version: "17"
-      - name: Version
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          name="$(grep -o 'android:versionName="[^"]*"' app/AndroidManifest.xml | cut -d'"' -f2)"
-          if [ "$tag" != "$name" ]; then
-            echo "::error::Le tag ($GITHUB_REF_NAME) ne correspond pas à versionName ($name) dans app/AndroidManifest.xml : augmente versionCode et versionName, puis refais le tag."
-            exit 1
-          fi
-      - name: Clé de signature
-        id: key
+      - name: Clé de signature et réglages publics
+        if: steps.version.outputs.publish == 'true'
         env:
           KEYSTORE: ${{ secrets.FREEMYTV_KEYSTORE }}
         run: |
-          # Sans le secret, rien n'est publié ici (la version peut être publiée à la main, déjà signée).
-          if [ -z "$KEYSTORE" ]; then
-            echo "::warning::Pas de secret FREEMYTV_KEYSTORE : rien à publier ici (voir en haut de .github/workflows/release.yml)."
-            exit 0
-          fi
           printf '%s' "$KEYSTORE" | base64 -d > freemytv.keystore
           cp config.example.properties config.properties
-          echo "ok=true" >> "$GITHUB_OUTPUT"
       - name: Outils Android et compilateur C#
-        if: steps.key.outputs.ok == 'true'
+        if: steps.version.outputs.publish == 'true'
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" \
             "build-tools;36.0.0" "platforms;android-34" > /dev/null
@@ -56,16 +60,13 @@ jobs:
           sudo apt-get install -y -q mono-mcs libmono-system-windows-forms4.0-cil libmono-system-drawing4.0-cil \
             libmono-system-numerics4.0-cil > /dev/null
       - run: bash build.sh
-        if: steps.key.outputs.ok == 'true'
+        if: steps.version.outputs.publish == 'true'
       - name: Release
-        if: steps.key.outputs.ok == 'true'
+        if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           rm -f freemytv.keystore
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" FrontEndTV.apk FrontEndTV-Installateur.exe --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" FrontEndTV.apk FrontEndTV-Installateur.exe \
-              --title "FrontEndTV ${GITHUB_REF_NAME#v}" --generate-notes
-          fi
+          gh release create "$TAG" FrontEndTV.apk FrontEndTV-Installateur.exe --target "$GITHUB_SHA" \
+            --title "FrontEndTV ${TAG#v}" --notes-file .github/release-notes.md

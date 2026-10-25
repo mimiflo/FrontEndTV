@@ -39,11 +39,14 @@ ANDROID_HOME=<sdk> ./build.sh      # build-tools 36 conseillé (d8 34 plantait),
 - **Version publique** (Releases GitHub) : compiler avec `config.properties` = `config.example.properties`
   (aucune clé, aucune ville). Vérifier que l'APK ne contient pas la clé TMDB personnelle avant de publier.
   Publier `FrontEndTV-Installateur.exe` (et `FrontEndTV.apk` pour ceux qui installent à la main).
-- **Publier une mise à jour** : augmenter `versionCode` et `versionName` (`app/AndroidManifest.xml`), puis envoyer le
-  tag `v<versionName>` : `.github/workflows/release.yml` compile (avec `config.example.properties` et le secret
-  `FREEMYTV_KEYSTORE`, la clé de signature en base64) et joint `FrontEndTV.apk` + l'exe à la Release. Les TV la
-  trouvent dans Réglages de FrontEndTV → Mise à jour (vérifié aussi tout seul toutes les 6 h). Le dépôt
-  `update_repo` (config.properties) doit être **public** : la TV lit l'API GitHub sans compte.
+- **Publier une mise à jour** : augmenter `versionCode` et `versionName` (`app/AndroidManifest.xml`), écrire les
+  nouveautés dans `.github/release-notes.md`, puis pousser sur `main`. `.github/workflows/release.yml` voit qu'il n'y a
+  pas encore de Release `v<versionName>`, compile (avec `config.example.properties` et le secret `FREEMYTV_KEYSTORE`,
+  la clé de signature en base64 — déjà enregistré) et crée la Release avec `FrontEndTV.apk` + l'exe. Pas de tag à
+  pousser (le proxy de Claude Code les refuse). Les TV la trouvent dans Réglages de FrontEndTV → Mise à jour (vérifié
+  aussi tout seul toutes les 6 h). Le dépôt est public : la TV lit l'API GitHub sans compte.
+- Clé de signature des versions publiques : CN=FrontEndTV, O=Florian (SHA-256 `a0821902…4f52ca`), depuis la 1.2. La
+  1.1 avait une autre clé : l'installateur remplace tout seul une version signée autrement.
 
 ## Installer sur une TV (Windows)
 
