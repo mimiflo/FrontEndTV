@@ -157,9 +157,10 @@ public class SettingsActivity extends Activity {
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
         private static final float LIST_X = 1000, LIST_R = 1824, LIST_TOP = 186, ROW_GAP = 8, CHOICE_H = 104;
-        // The main menu: eight rows, then the comparison, the picks (with the Watchmode credit) and two notices, all on
-        // one 1080 px screen: the rows share the 462 px that seven took.
-        private static final float MAIN_TOP = 150, ROW_H = 58, MAIN_GAP = 5;
+        // The main menu: nine rows, then the comparison, the picks (with the Watchmode credit) and two notices, all on
+        // one 1080 px screen: the rows share the 504 px that eight took.
+        private static final float MAIN_TOP = 150, ROW_H = 52, MAIN_GAP = 4;
+        private static final int UPDATE_ROW = 8;
         private static final int AMBER = 0xFFFFC266, INK = 0xFFFFFFFF;
 
         private final SettingsActivity activity;
@@ -221,7 +222,7 @@ public class SettingsActivity extends Activity {
                 }
                 wasBusy = nowBusy;
                 invalidate();
-                handler.postDelayed(this, busy() ? 500 : 2000);
+                handler.postDelayed(this, busy() || Updater.working() ? 500 : 2000);
             }
         };
 
@@ -272,6 +273,7 @@ public class SettingsActivity extends Activity {
                                 : freeActive() ? "FrontEndTV" : Ui.tr("Original");
                         return Ui.trf("Home Screen, {mode}", "mode", value);
                     }
+                    if (row == UPDATE_ROW) return Ui.tr("Update") + ", " + Updater.label();
                     String[] names = {Ui.tr("Screensaver, preview"), Ui.tr("Home Settings"),
                             Ui.tr("Shelf"), Ui.tr("Top Buttons"), Ui.tr("Remote Buttons"), Ui.tr("Sleep Timer"),
                             Ui.tr("TV Settings")};
@@ -340,6 +342,7 @@ public class SettingsActivity extends Activity {
             Choreographer.getInstance().postFrameCallback(this);
             spoken.readAgain();
             Photos.importInbox(getContext(), this::invalidate);   // photos a computer just sent
+            Updater.checkIfStale(getContext());   // a new version shows on the Update row
         }
 
         void pause() {
@@ -350,7 +353,7 @@ public class SettingsActivity extends Activity {
 
         @Override public void doFrame(long frameTimeNanos) {
             if (!running) return;
-            boolean moving = busy();
+            boolean moving = busy() || Updater.working();
             for (Spring s : pop) moving |= !s.settled();
             if (moving) invalidate();
             Choreographer.getInstance().postFrameCallback(this);
@@ -408,7 +411,7 @@ public class SettingsActivity extends Activity {
 
         private int rowCount() {
             switch (screen) {
-                case MAIN: return 8;
+                case MAIN: return 9;
                 case HOME_CHOICE: return 2;
                 case HOME_SETTINGS: return Math.min(SETTINGS_VISIBLE, settingLabels().length);
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
@@ -483,7 +486,7 @@ public class SettingsActivity extends Activity {
             else drawList(c);
         }
 
-        private static final String[] MAIN_ICONS = {"home", "sparkles", "settings", "apps", "tv", "gamepad", "bedtime", "tv_settings"};
+        private static final String[] MAIN_ICONS = {"home", "sparkles", "settings", "apps", "tv", "gamepad", "bedtime", "tv_settings", "sync"};
 
         private void drawMain(Canvas c, float seconds) {
             boolean working = busy();
@@ -491,8 +494,8 @@ public class SettingsActivity extends Activity {
             String mode = freeActive() ? "FrontEndTV" : Ui.tr("Original");
             String[] labels = {Ui.tr("Home Screen"), Ui.tr("Screensaver"),
                     Ui.tr("Home Settings"), Ui.tr("Shelf"), Ui.tr("Top Buttons"),
-                    Ui.tr("Remote Buttons"), Ui.tr("Sleep Timer"), Ui.tr("TV Settings")};
-            String[] values = {working ? "" : mode, Ui.tr("Preview"), "", "", "", "", "", ""};
+                    Ui.tr("Remote Buttons"), Ui.tr("Sleep Timer"), Ui.tr("TV Settings"), Ui.tr("Update")};
+            String[] values = {working ? "" : mode, Ui.tr("Preview"), "", "", "", "", "", "", ""};
             for (int i = 0; i < labels.length; i++) {
                 float y = (MAIN_TOP + i * (ROW_H + MAIN_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
@@ -508,6 +511,17 @@ public class SettingsActivity extends Activity {
                 if (off) {
                     rowValue.setColor(blend(0x59FFFFFF, 0x59FFFFFF, f));
                     c.drawText(Ui.tr("Unavailable"), right, base, rowValue);
+                } else if (i == UPDATE_ROW) {
+                    // The update: its state, in violet when a new version waits, with the spinning arc while it works
+                    int st = Updater.state();
+                    rowValue.setColor(st == Updater.AVAILABLE ? blend(0xFFC9B8FF, 0xFFFFFFFF, f)
+                            : st == Updater.FAILED ? blend(AMBER, 0xFFFFE2B0, f) : blend(0x8CFFFFFF, 0xD9FFFFFF, f));
+                    String shown = TextUtils.ellipsize(Updater.label(), new TextPaint(rowValue), 520 * k, TextUtils.TruncateAt.END).toString();
+                    c.drawText(shown, right, base, rowValue);
+                    if (Updater.working()) {
+                        spinner.setColor(blend(0xFFFFFFFF, INK, f));
+                        Ui.spinner(c, right - rowValue.measureText(shown) - 26 * k, rowRect.centerY(), 12 * k, seconds * 1.3f, spinner);
+                    }
                 } else if (i >= 2) {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
                     Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(0x66FFFFFF, 0x99FFFFFF, f));
@@ -1433,6 +1447,10 @@ public class SettingsActivity extends Activity {
                 pickScroll = 0;
                 screen = POWER;
                 focus = 0;
+            } else if (focus == UPDATE_ROW) {
+                Updater.activate(c);
+                invalidate();
+                return;
             } else {
                 activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }

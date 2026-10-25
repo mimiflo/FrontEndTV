@@ -60,6 +60,7 @@ final class Adb implements Closeable {
     private final DataInputStream in;
     private final OutputStream out;
     private int nextLocalId = 1;
+    private int maxData = 4096;   // the most the TV takes in one message (its CNXN says)
 
     private Adb(Socket socket) throws IOException {
         this.socket = socket;
@@ -97,6 +98,7 @@ final class Adb implements Closeable {
                 }
                 if (m.command == CNXN) {
                     s.setSoTimeout(20_000);
+                    adb.maxData = Math.max(1024, Math.min(MAX_DATA, m.arg1));
                     return adb;
                 }
                 if (m.command == STLS) throw new IOException(Ui.tr("the TV asked for TLS (wireless debugging); use USB debugging"));
@@ -153,6 +155,7 @@ final class Adb implements Closeable {
             }
             if (m.command == CNXN) {
                 s.setSoTimeout(20_000);
+                adb.maxData = Math.max(1024, Math.min(MAX_DATA, m.arg1));
                 return adb;
             }
         } catch (IOException | RuntimeException ignored) {
@@ -180,6 +183,49 @@ final class Adb implements Closeable {
                 send(CLSE, local, m.arg0, null);
                 return result.toString("UTF-8");
             }
+        }
+    }
+
+    /**
+     * Installs (or updates) an APK by streaming it to "cmd package install", as `adb install` does; returns what it
+     * printed ("Success" or the error). `progress` gets 0 to 100. Used by Updater, for this app's own updates.
+     */
+    String install(File apk, java.util.function.IntConsumer progress) throws IOException {
+        long size = apk.length();
+        int local = nextLocalId++, remote = 0;
+        send(OPEN, local, 0, ("exec:cmd package install -r -S " + size + "\0").getBytes(StandardCharsets.UTF_8));
+        ByteArrayOutputStream result = new ByteArrayOutputStream();
+        long sent = 0;
+        boolean waitingAck = true;   // the OKAY for OPEN, then one for each message sent
+        int saved = socket.getSoTimeout();
+        socket.setSoTimeout(300_000);   // Play Protect may ask on the TV
+        try (FileInputStream f = new FileInputStream(apk)) {
+            byte[] chunk = new byte[maxData];
+            while (true) {
+                if (!waitingAck && sent < size) {
+                    int n = f.read(chunk, 0, (int) Math.min(chunk.length, size - sent));
+                    if (n <= 0) throw new IOException("APK unreadable");
+                    send(WRTE, local, remote, java.util.Arrays.copyOf(chunk, n));
+                    sent += n;
+                    waitingAck = true;
+                    if (progress != null) progress.accept((int) (sent * 100 / size));
+                }
+                Message m = read();
+                if (m.arg1 != local) continue;
+                if (m.command == OKAY) {
+                    remote = m.arg0;
+                    waitingAck = false;
+                } else if (m.command == WRTE) {
+                    result.write(m.data);
+                    send(OKAY, local, m.arg0, null);
+                } else if (m.command == CLSE) {
+                    if (remote == 0) throw new IOException(Ui.tr("ADB refused the command"));
+                    send(CLSE, local, m.arg0, null);
+                    return result.toString("UTF-8");
+                }
+            }
+        } finally {
+            socket.setSoTimeout(saved);
         }
     }
 

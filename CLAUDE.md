@@ -13,6 +13,7 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | `SettingsActivity.java` | Écran des réglages (thème violet) ; reçoit aussi les réglages envoyés par l'installateur |
 | `HomeMode.java` / `ModeJob.java` | Bascule « FrontEndTV ⇄ Original » (désactive/réactive les applis du constructeur via l'ADB de la TV) |
 | `HomeApps.java` | Dock (`SHELF`), tiroir, logos extraits des bannières des applis |
+| `Updater.java` | Mises à jour : ligne « Mise à jour » des réglages ; lit la dernière Release GitHub (`Config.UPDATE_REPO`), télécharge `FrontEndTV.apk`, l'installe via l'ADB de la TV (`Adb.install`) |
 | `Recs.java` | Recommandations TMDB (clé : `Prefs.tmdbKey()`, pays : `Prefs.tmdbRegion()`) |
 | `Prefs.java` | Réglages persistants (prénom, clé TMDB, pays, ville…) |
 | `app/assets/i18n/*.json` | Traductions (clé = texte anglais) |
@@ -38,6 +39,11 @@ ANDROID_HOME=<sdk> ./build.sh      # build-tools 36 conseillé (d8 34 plantait),
 - **Version publique** (Releases GitHub) : compiler avec `config.properties` = `config.example.properties`
   (aucune clé, aucune ville). Vérifier que l'APK ne contient pas la clé TMDB personnelle avant de publier.
   Publier `FrontEndTV-Installateur.exe` (et `FrontEndTV.apk` pour ceux qui installent à la main).
+- **Publier une mise à jour** : augmenter `versionCode` et `versionName` (`app/AndroidManifest.xml`), puis envoyer le
+  tag `v<versionName>` : `.github/workflows/release.yml` compile (avec `config.example.properties` et le secret
+  `FREEMYTV_KEYSTORE`, la clé de signature en base64) et joint `FrontEndTV.apk` + l'exe à la Release. Les TV la
+  trouvent dans Réglages de FrontEndTV → Mise à jour (vérifié aussi tout seul toutes les 6 h). Le dépôt
+  `update_repo` (config.properties) doit être **public** : la TV lit l'API GitHub sans compte.
 
 ## Installer sur une TV (Windows)
 

@@ -55,6 +55,11 @@ Sans clé, l'accueil fonctionne, sans les recommandations.
 
 Pour changer de clé, de pays ou de prénom plus tard, relance simplement l'installateur (clé vide : la TV garde la sienne).
 
+## Mettre à jour
+
+Sur la TV : ouvre **FrontEndTV** (l'engrenage de l'accueil) → **Mise à jour**. S'il y a une nouvelle version, elle est
+affichée ; **OK** la télécharge et l'installe toute seule. FrontEndTV vérifie aussi de lui-même toutes les 6 heures.
+
 ## Revenir en arrière
 
 Relance l'installateur et clique sur **Remettre l'écran d'accueil d'origine**, ou sur la TV : **FrontEndTV → Écran d'accueil → Original**. L'accueil d'origine, l'économiseur et toutes les
