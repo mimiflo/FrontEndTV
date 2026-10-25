@@ -35,7 +35,6 @@ final class HomeMode {
 
     static final String PKG = "io.freemytv";
     static final String HOME_ACTIVITY = PKG + "/" + PKG + ".HomeActivity";
-    static final String SETTINGS_ACTIVITY = PKG + "/" + PKG + ".SettingsActivity";
     /** Our screensaver: on Android 11 the copy that runs in the main process (ScreensaverAlone, #10). */
     static final String DREAM = PKG + "/" + PKG + (Build.VERSION.SDK_INT == 30 ? ".ScreensaverAlone" : ".Screensaver");
     static final String FREE = "free", ORIGINAL = "original";
@@ -345,8 +344,6 @@ final class HomeMode {
                         + "show there: Claude Code can remove them from your computer), then try once more."));
             }
             if (metrics(latest, ORIGINAL) == null && !home.isEmpty()) {
-                busy(c, Ui.tr("Measuring the original home screen…"));
-                measureHomeTime(c, adb, ORIGINAL);
                 measureMemory(c, adb, ORIGINAL);
             }
             busy(c, Ui.tr("Switching the home screen and screensaver…"));
@@ -417,8 +414,6 @@ final class HomeMode {
                 }
             }
             notice(c, Ui.trf("FrontEndTV is on: new home screen and screensaver, {n} apps turned off.", "n", disabled.size()));
-            busy(c, Ui.tr("Measuring FrontEndTV…"));
-            measureHomeTime(c, adb, FREE);
             done(c, null);
             adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
             ModeJob.schedule(c, ModeJob.MEMORY, FREE, 120_000);
@@ -485,8 +480,6 @@ final class HomeMode {
                 if (!homeOk) problems.add(Ui.tr("the original home screen"));
                 notice(c, Ui.trf("Original mode, but I couldn't turn back on: {list}.", "list", String.join(", ", problems)));
             }
-            busy(c, Ui.tr("Measuring the original home screen…"));
-            measureHomeTime(c, adb, ORIGINAL);
             done(c, null);
             adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
             ModeJob.schedule(c, ModeJob.MEMORY, ORIGINAL, 120_000);
@@ -862,23 +855,7 @@ final class HomeMode {
         if (!output.contains(expected)) throw new IOException(error + " (" + output.trim() + ")");
     }
 
-    // MARK: - Measurements (without opening apps: memory and the home button)
-
-    private static void measureHomeTime(Context c, Adb adb, String mode) throws IOException, JSONException {
-        List<Integer> samples = new ArrayList<>();
-        Pattern total = Pattern.compile("TotalTime: (\\d+)");
-        for (int i = 0; i < 3; i++) {
-            adb.shell("am start -W -n " + SETTINGS_ACTIVITY);
-            SystemClock.sleep(500);
-            Matcher m = total.matcher(adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.HOME"));
-            if (m.find()) samples.add(Integer.parseInt(m.group(1)));
-            SystemClock.sleep(600);
-        }
-        adb.shell("am start -W -n " + SETTINGS_ACTIVITY);
-        if (samples.isEmpty()) return;
-        Collections.sort(samples);
-        putMetric(c, mode, "homeMs", samples.get(samples.size() / 2));
-    }
+    // MARK: - Measurements (without opening anything: memory, read two minutes after a switch)
 
     /** Two minutes after a switch (the home screen settled, caches trimmed). */
     static void measureMemoryNow(Context c, String mode) {

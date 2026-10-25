@@ -21,7 +21,9 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | `installer/Program.cs` | Installateur Windows `FrontEndTV-Installateur.exe` : la fenêtre (thème sombre/violet, WinForms) |
 | `installer/Engine.cs` | Installateur : tout le travail avec la TV, sans interface |
 | `installer/Adb.cs` | Installateur : client ADB intégré (clé RSA, `shell:`, installation par `exec:cmd package install -S`) — pas d'adb.exe |
-| `installer/MakeIcon.java` | `build.sh` : icône `.ico` en 10 tailles (16 → 192 px) à partir de `icon.png` |
+| `installer/MakeIcon.java` | `build-exe.sh` : icône `.ico` en 10 tailles (16 → 192 px) à partir de `icon.png` |
+| `installer/build-exe.sh` | Fabrique l'exe (appelé par `build.sh`, ou seul sur Windows) : `out/BuildInfo.cs` (version, URL et SHA-256 de l'APK), manifeste `app.manifest` |
+| `installer/check-exe.ps1` | Compilation GitHub sur Windows : lance l'exe en `-SelfTest` (fenêtre en images) et l'analyse avec Windows Defender |
 | `.claude/skills/find-skills/` | Skill « find-skills » (vercel-labs/skills, MIT) : chercher et installer d'autres skills (`npx skills`) |
 | `build.sh` | Compilation sans Gradle : aapt2 → javac → d8 → zipalign → apksigner → `FrontEndTV.apk`, puis l'installateur `.exe` |
 
@@ -33,9 +35,13 @@ ANDROID_HOME=<sdk> ./build.sh      # build-tools 36 conseillé (d8 34 plantait),
 - Le 1er lancement copie `config.example.properties` en `config.properties` (clé TMDB, ville, prénom, pays…).
 - `config.properties` et `freemytv.keystore` ne sont **jamais** commités (`.gitignore`). La clé de signature doit
   rester la même pour pouvoir mettre à jour l'appli installée ; mot de passe du keystore : voir `build.sh`.
-- `build.sh` crée aussi `FrontEndTV-Installateur.exe` (l'APK est dedans, en ressource) avec le `csc.exe` livré avec
-  Windows (Git Bash ou WSL), ou `mcs` (Mono) ailleurs. Code en **C# 5** (pas de `$"..."`, `?.`, `=>` pour les membres) :
-  c'est ce que comprend le csc de Windows.
+- `build.sh` crée aussi `FrontEndTV-Installateur.exe` (`installer/build-exe.sh`, `SKIP_EXE=1` pour s'en passer) avec
+  le `csc.exe` livré avec Windows (Git Bash ou WSL), ou `mcs` (Mono) ailleurs. Code en **C# 5** (pas de `$"..."`, `?.`,
+  `=>` pour les membres) : c'est ce que comprend le csc de Windows. L'APK n'est **pas** dans l'exe (un gros contenu
+  compressé caché fait réagir les antivirus) : l'exe prend `FrontEndTV.apk` à côté de lui ou télécharge celui de la
+  Release de sa version, et vérifie son SHA-256 (`out/BuildInfo.cs`). Sur GitHub, l'exe est compilé sur Windows par le
+  compilateur de Microsoft, lancé en `-SelfTest` et analysé par Windows Defender (`installer/check-exe.ps1`) ; une
+  erreur de démarrage est montrée et notée dans `%LOCALAPPDATA%\FrontEndTV\installateur-erreur.txt`.
 - **Version publique** (Releases GitHub) : compiler avec `config.properties` = `config.example.properties`
   (aucune clé, aucune ville). Vérifier que l'APK ne contient pas la clé TMDB personnelle avant de publier.
   Publier `FrontEndTV-Installateur.exe` (et `FrontEndTV.apk` pour ceux qui installent à la main).

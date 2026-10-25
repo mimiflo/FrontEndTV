@@ -561,7 +561,7 @@ public class SettingsActivity extends Activity {
                 y += errorLayout.getLineBaseline(errorLayout.getLineCount() - 1) - errorLayout.getLineBaseline(0) + 46 * k;
             }
             // The details in a soft glass card.
-            float cardH = (36 + 166 + 30 + (Config.WATCHMODE_KEY.trim().isEmpty() ? 78 : 108) + 26) * k;
+            float cardH = (36 + 126 + 30 + (Config.WATCHMODE_KEY.trim().isEmpty() ? 78 : 108) + 26) * k;
             tmp.set(LIST_X * k, y - 10 * k, LIST_R * k, y - 10 * k + cardH);
             card.setColor(0x0FFFFFFF);
             c.drawRoundRect(tmp, 22 * k, 22 * k, card);
@@ -627,8 +627,7 @@ public class SettingsActivity extends Activity {
             JSONObject metrics = state.optJSONObject("metrics");
             JSONObject a = metrics == null ? null : metrics.optJSONObject(HomeMode.ORIGINAL);
             JSONObject b = metrics == null ? null : metrics.optJSONObject(HomeMode.FREE);
-            String[][] rows = {{Ui.tr("Home button"), "homeMs"}, {Ui.tr("Free memory"), "memAvailableMB"},
-                    {Ui.tr("Home screen memory"), "homePssMB"}};
+            String[][] rows = {{Ui.tr("Free memory"), "memAvailableMB"}, {Ui.tr("Home screen memory"), "homePssMB"}};
             for (int i = 0; i < rows.length; i++) {
                 float base = y + (46 + 40 * i) * k;
                 c.drawText(rows[i][0], x, base, cellLabel);
@@ -674,7 +673,7 @@ public class SettingsActivity extends Activity {
                 }
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
-            c.drawText(Ui.tr("Switching takes a few seconds; the screen blinks while it measures."), LIST_X * k + 30 * k,
+            c.drawText(Ui.tr("Switching takes a few seconds."), LIST_X * k + 30 * k,
                     (LIST_TOP + 20 + 2 * (CHOICE_H + ROW_GAP) + 40) * k, hint);
         }
 
@@ -688,7 +687,6 @@ public class SettingsActivity extends Activity {
         private static String metric(JSONObject m, String key) {
             if (m == null || !m.has(key)) return "—";
             long v = m.optLong(key);
-            if (key.equals("homeMs")) return Ui.trf("{n} ms", "n", v);
             if (key.equals("memAvailableMB") && v >= 1024) return Ui.trf("{n} GB", "n", String.format(Ui.locale(), "%.2f", v / 1024.0));
             return Ui.trf("{n} MB", "n", v);
         }

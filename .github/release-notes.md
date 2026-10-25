@@ -1,7 +1,6 @@
-## FrontEndTV 1.2.1
+## FrontEndTV 1.2.2
 
-- **Mise à jour depuis la TV** : Réglages de FrontEndTV → *Mise à jour*. Quand une nouvelle version sort, OK la télécharge et l'installe toute seule.
-- **Nouvel installateur Windows** : `FrontEndTV-Installateur.exe`, un seul fichier. Il trouve la TV tout seul, installe et active FrontEndTV, sans rien d'autre à télécharger.
-- Nouvelle clé de signature : si ta TV a la 1.1, l'installateur la remplace tout seul (une fois). Pense à remettre ta clé TMDB dans l'installateur.
+- **TV** : plus de plantage pendant « Mesure de FrontEndTV… » quand on change d'écran d'accueil. Le changement ne fait plus clignoter l'écran (le temps du bouton Accueil n'est plus mesuré ; la mémoire l'est toujours, en silence).
+- **Installateur** : ne se ferme plus sans rien dire (toute erreur est affichée et notée), ne contient plus l'appli en lui (il télécharge celle de sa version depuis cette page et vérifie son empreinte), et cherche la TV plus doucement sur le réseau. Moins de fausses alertes des antivirus.
 
-**Installer** : télécharge `FrontEndTV-Installateur.exe` et double-clique dessus (Windows peut dire « Windows a protégé votre ordinateur » : *Informations complémentaires → Exécuter quand même*).
+**Installer** : télécharge `FrontEndTV-Installateur.exe` et double-clique dessus. Sur la TV, si FrontEndTV 1.2 ou plus est déjà là : Réglages de FrontEndTV → *Mise à jour*.

@@ -1,5 +1,6 @@
 # Vérifie que FrontEndTV et son installateur compilent à chaque push (l'APK produit est signé avec une clé jetable :
-# pour tester seulement).
+# pour tester seulement). L'installateur est compilé sur Windows avec le compilateur de Microsoft, lancé pour de vrai
+# (-SelfTest : sa fenêtre en images) et passé à l'antivirus Windows Defender.
 name: Compilation
 
 on:
@@ -23,16 +24,34 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" \
             "build-tools;36.0.0" "platforms;android-34" > /dev/null
           echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
-      - name: Compilateur C# (pour l'installateur .exe)
-        run: |
-          sudo apt-get update -q > /dev/null
-          sudo apt-get install -y -q mono-mcs libmono-system-windows-forms4.0-cil libmono-system-drawing4.0-cil \
-            libmono-system-numerics4.0-cil > /dev/null
-      - run: bash build.sh
-      - run: test -f FrontEndTV-Installateur.exe
+      - run: SKIP_EXE=1 bash build.sh
       - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: FrontEndTV.apk
+
+  windows:
+    needs: android
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+      - run: bash installer/build-exe.sh
+        shell: bash
+      - name: L'installateur démarre (-SelfTest)
+        shell: pwsh
+        run: ./installer/check-exe.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: FrontEndTV-test
           path: |
             FrontEndTV.apk
             FrontEndTV-Installateur.exe
+            fenetre*.png

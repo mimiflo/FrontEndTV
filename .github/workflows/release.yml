@@ -1,7 +1,9 @@
 # Publie une version, toute seule : à chaque envoi sur main, si la version de app/AndroidManifest.xml
-# (versionName, ex. 1.3) n'a pas encore de Release « v1.3 », compile FrontEndTV.apk signé avec la clé de FrontEndTV et
-# FrontEndTV-Installateur.exe, puis crée la Release v1.3 avec les deux. Les TV la trouvent ensuite avec
-# Réglages de FrontEndTV → Mise à jour. Pour publier : augmenter versionCode et versionName, puis pousser sur main.
+# (versionName, ex. 1.3) n'a pas encore de Release « v1.3 », compile FrontEndTV.apk signé avec la clé de FrontEndTV
+# (Linux), puis FrontEndTV-Installateur.exe avec le compilateur de Microsoft (Windows), le vérifie (il démarre,
+# Windows Defender ne le signale pas) et crée la Release v1.3 avec les deux, et les notes de .github/release-notes.md.
+# Les TV la trouvent ensuite avec Réglages de FrontEndTV → Mise à jour. Pour publier : augmenter versionCode et
+# versionName, puis pousser sur main.
 #
 # La clé est le secret FREEMYTV_KEYSTORE (freemytv.keystore en base64 : base64 -w0 freemytv.keystore). Sans la même
 # clé, la TV refuse la mise à jour. La version publique est compilée avec config.example.properties : aucune clé TMDB
@@ -19,8 +21,11 @@ permissions:
 concurrency: release
 
 jobs:
-  release:
+  apk:
     runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
       - name: Version à publier ?
@@ -43,30 +48,46 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Clé de signature et réglages publics
+      - name: APK signé
         if: steps.version.outputs.publish == 'true'
         env:
           KEYSTORE: ${{ secrets.FREEMYTV_KEYSTORE }}
         run: |
           printf '%s' "$KEYSTORE" | base64 -d > freemytv.keystore
           cp config.example.properties config.properties
-      - name: Outils Android et compilateur C#
-        if: steps.version.outputs.publish == 'true'
-        run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" \
             "build-tools;36.0.0" "platforms;android-34" > /dev/null
-          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
-          sudo apt-get update -q > /dev/null
-          sudo apt-get install -y -q mono-mcs libmono-system-windows-forms4.0-cil libmono-system-drawing4.0-cil \
-            libmono-system-numerics4.0-cil > /dev/null
-      - run: bash build.sh
+          ANDROID_HOME="$RUNNER_TEMP/sdk" SKIP_EXE=1 bash build.sh
+          rm -f freemytv.keystore
+      - uses: actions/upload-artifact@v4
         if: steps.version.outputs.publish == 'true'
+        with:
+          name: apk-release
+          path: FrontEndTV.apk
+
+  windows:
+    needs: apk
+    if: needs.apk.outputs.publish == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk-release
+      - run: bash installer/build-exe.sh
+        shell: bash
+      - name: L'installateur démarre, Windows Defender ne le signale pas
+        shell: pwsh
+        run: ./installer/check-exe.ps1
       - name: Release
-        if: steps.version.outputs.publish == 'true'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.apk.outputs.tag }}
         run: |
-          rm -f freemytv.keystore
           gh release create "$TAG" FrontEndTV.apk FrontEndTV-Installateur.exe --target "$GITHUB_SHA" \
             --title "FrontEndTV ${TAG#v}" --notes-file .github/release-notes.md

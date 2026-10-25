@@ -11,6 +11,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -301,18 +302,58 @@ sealed class Engine {
 
     // MARK: - L'APK
 
-    /** L'APK choisi (-Apk), sinon celui intégré à cet .exe, copié dans le dossier de travail. */
+    /**
+     * L'APK à installer : celui donné avec -Apk ; sinon FrontEndTV.apk à côté de l'installateur ou déjà téléchargé, s'il
+     * est bien celui de cette version (même empreinte SHA-256) ; sinon celui de la Release GitHub de cette version,
+     * téléchargé puis vérifié. Il n'est pas dans l'.exe : un gros contenu compressé caché dans un programme fait partie
+     * de ce qui fait réagir les antivirus.
+     */
     string ApkFile() {
         if (!string.IsNullOrEmpty(o.Apk)) {
             if (!File.Exists(o.Apk)) throw new SetupException("APK introuvable : " + o.Apk);
             return Path.GetFullPath(o.Apk);
         }
-        using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("FrontEndTV.apk")) {
-            if (s == null) throw new SetupException("Cet installateur ne contient pas FrontEndTV (il doit être créé par build.sh).");
-            string target = Path.Combine(Home, "FrontEndTV.apk");
-            using (var f = File.Create(target)) s.CopyTo(f);
-            return target;
+        string beside = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".", "FrontEndTV.apk");
+        string cached = Path.Combine(Home, "FrontEndTV-" + BuildInfo.Version + ".apk");
+        foreach (string f in new[] { beside, cached }) {
+            if (File.Exists(f) && Sha256(f) == BuildInfo.ApkSha256) return f;
         }
+        ui.Step(StepInstall, StepState.Running, "Téléchargement de FrontEndTV " + BuildInfo.Version + "...");
+        string part = cached + ".part";
+        try {
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            var request = (HttpWebRequest) WebRequest.Create(BuildInfo.ApkUrl);
+            request.Timeout = 30000;
+            request.UserAgent = "FrontEndTV-Installateur";
+            using (var response = request.GetResponse())
+            using (var input = response.GetResponseStream())
+            using (var output = File.Create(part)) {
+                long total = response.ContentLength, done = 0;
+                var buffer = new byte[65536];
+                int n, shown = -1;
+                while ((n = input.Read(buffer, 0, buffer.Length)) > 0) {
+                    output.Write(buffer, 0, n);
+                    done += n;
+                    int percent = total > 0 ? (int) (done * 100 / total) : -1;
+                    if (percent >= 0 && percent != shown) {
+                        shown = percent;
+                        ui.Step(StepInstall, StepState.Running, "Téléchargement de FrontEndTV " + BuildInfo.Version + "... " + percent + " %");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            try { File.Delete(part); } catch (Exception) {}
+            Log("téléchargement : " + e.Message);
+            throw new SetupException("Impossible de télécharger FrontEndTV (Internet ?) : " + e.Message
+                    + ". Sinon, mets FrontEndTV.apk de la version " + BuildInfo.Version + " à côté de l'installateur.");
+        }
+        if (Sha256(part) != BuildInfo.ApkSha256) {
+            File.Delete(part);
+            throw new SetupException("Le fichier téléchargé n'est pas celui attendu (empreinte différente) : rien n'a été installé.");
+        }
+        if (File.Exists(cached)) File.Delete(cached);
+        File.Move(part, cached);
+        return cached;
     }
 
     static string Sha256(string file) {
@@ -324,8 +365,13 @@ sealed class Engine {
 
     // MARK: - Trouver la TV
 
-    /** Les adresses du réseau local qui répondent sur le port 5555 (le débogage réseau d'Android), en ~1 seconde. */
-    public static List<string> FindTVs() {
+    /**
+     * Les adresses du réseau local qui répondent sur le port 5555 (le débogage réseau d'Android). D'abord les appareils
+     * que Windows connaît déjà (sa table ARP : rien n'est envoyé pour la lire) ; avec `wholeNetwork`, s'il n'y a rien,
+     * les 254 adresses du réseau, par groupes de 24 : un « balayage » d'un coup ressemble à ce que font les logiciels
+     * malveillants, et les antivirus le surveillent.
+     */
+    public static List<string> FindTVs(bool wholeNetwork) {
         var own = new List<string>();
         var prefixes = new List<string>();
         try {
@@ -341,31 +387,76 @@ sealed class Engine {
                 }
             }
         } catch (Exception) {}
-        var probes = new List<KeyValuePair<string, TcpClient>>();
-        var tasks = new List<Task>();
+        var known = Neighbors().Where(ip => prefixes.Contains(ip.Substring(0, ip.LastIndexOf('.'))) && !own.Contains(ip)).ToList();
+        List<string> found = Probe(known, 1200);
+        if (found.Count > 0 || !wholeNetwork) return found;
         foreach (string prefix in prefixes) {
+            var all = new List<string>();
             for (int n = 1; n <= 254; n++) {
                 string ip = prefix + "." + n;
-                var c = new TcpClient();
-                try { tasks.Add(c.ConnectAsync(ip, 5555)); probes.Add(new KeyValuePair<string, TcpClient>(ip, c)); }
-                catch (Exception) { c.Close(); }
+                if (!own.Contains(ip) && !known.Contains(ip)) all.Add(ip);
             }
+            for (int i = 0; i < all.Count && found.Count == 0; i += 24) {
+                found.AddRange(Probe(all.Skip(i).Take(24).ToList(), 500));
+            }
+            if (found.Count > 0) break;
         }
-        // Une TV répond en quelques millisecondes ; on laisse jusqu'à 1,5 s aux Wi-Fi lents
-        var clock = Stopwatch.StartNew();
-        while (clock.ElapsedMilliseconds < 1500) {
-            Thread.Sleep(100);
-            bool any = tasks.Any(t => t.Status == TaskStatus.RanToCompletion);
-            if (any && clock.ElapsedMilliseconds >= 800) break;
-            if (tasks.All(t => t.IsCompleted)) break;
+        return found;
+    }
+
+    /** Celles de `ips` qui acceptent une connexion sur le port 5555 en moins de `ms` (une TV répond en quelques ms). */
+    static List<string> Probe(List<string> ips, int ms) {
+        var clients = new List<TcpClient>();
+        var tasks = new List<Task>();
+        foreach (string ip in ips) {
+            var c = new TcpClient();
+            try { tasks.Add(c.ConnectAsync(ip, 5555)); clients.Add(c); }
+            catch (Exception) { c.Close(); }
         }
+        try { Task.WaitAll(tasks.ToArray(), ms); } catch (AggregateException) {}
         var found = new List<string>();
-        for (int i = 0; i < probes.Count; i++) {
-            if (tasks[i].Status == TaskStatus.RanToCompletion && !own.Contains(probes[i].Key)) found.Add(probes[i].Key);
+        for (int i = 0; i < tasks.Count; i++) {
+            if (tasks[i].Status == TaskStatus.RanToCompletion) found.Add(ips[i]);
         }
-        foreach (var p in probes) { try { p.Value.Close(); } catch (Exception) {} }
+        foreach (var c in clients) { try { c.Close(); } catch (Exception) {} }
         foreach (var t in tasks) { var ignored = t.Exception; }   // marque les erreurs comme vues
         return found;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct IpNetRow {
+        public int Index, PhysAddrLen;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)] public byte[] PhysAddr;
+        public uint Addr;
+        public int Type;
+    }
+
+    [DllImport("iphlpapi.dll")] static extern int GetIpNetTable(IntPtr table, ref int size, bool sort);
+
+    /** Les adresses IPv4 que Windows a vues récemment sur le réseau (« arp -a »), sans rien envoyer. */
+    static List<string> Neighbors() {
+        var list = new List<string>();
+        try {
+            int size = 0;
+            GetIpNetTable(IntPtr.Zero, ref size, false);
+            if (size <= 0) return list;
+            IntPtr buffer = Marshal.AllocHGlobal(size);
+            try {
+                if (GetIpNetTable(buffer, ref size, false) != 0) return list;
+                int count = Marshal.ReadInt32(buffer), rowSize = Marshal.SizeOf(typeof(IpNetRow));
+                for (int i = 0; i < count; i++) {
+                    var row = (IpNetRow) Marshal.PtrToStructure(IntPtr.Add(buffer, 4 + i * rowSize), typeof(IpNetRow));
+                    if (row.Type != 3 && row.Type != 4) continue;   // dynamique ou statique (pas « invalide »)
+                    var ip = new IPAddress(row.Addr).GetAddressBytes();
+                    if (ip[0] >= 224 || ip[3] == 0 || ip[3] == 255) continue;   // multidiffusion, réseau, diffusion
+                    string text = string.Join(".", ip);
+                    if (!list.Contains(text)) list.Add(text);
+                }
+            } finally {
+                Marshal.FreeHGlobal(buffer);
+            }
+        } catch (Exception) {}   // pas Windows (essais), ou pas de table
+        return list;
     }
 
     /** La TV de la dernière fois, si elle répond. */

@@ -41,7 +41,8 @@ Il faut une **Google TV ou Android TV** (Android 8 ou plus récent) et un **PC W
    la première fois une seconde pour FrontEndTV. L'installateur te dit quand.
 
 > Windows peut afficher « Windows a protégé votre ordinateur » (l'installateur n'est pas signé) : *Informations
-> complémentaires → Exécuter quand même*.
+> complémentaires → Exécuter quand même*. L'installateur a besoin d'Internet la première fois : il télécharge l'appli
+> depuis la page de sa version et vérifie qu'elle est intacte.
 
 > Sur Android 14, Google Play Protect peut afficher « Appli à risque bloquée » : *Plus de détails → Installer quand même*.
 > Sur une Chromecast avec Google TV (Android 14), active aussi *Débogage sans fil* dans les options pour les développeurs.

@@ -132,25 +132,5 @@ fi
 "$BT/apksigner$BAT" sign --ks freemytv.keystore --ks-pass pass:freemytv --key-pass pass:freemytv --out FrontEndTV.apk out/aligned.apk
 echo "Built FrontEndTV.apk ($(du -h FrontEndTV.apk | cut -f1)). Install: adb install -r FrontEndTV.apk"
 
-# --- FrontEndTV-Installateur.exe: the Windows installer in one file (installer/*.cs, with the APK inside; it talks
-# to the TV itself, no adb needed). Compiled with the csc.exe that comes with Windows (from Git Bash or WSL), or
-# Mono's mcs elsewhere.
-CSC=""
-for c in /c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe \
-         /c/Windows/Microsoft.NET/Framework/v4.0.30319/csc.exe /mnt/c/Windows/Microsoft.NET/Framework/v4.0.30319/csc.exe; do
-  if [ -f "$c" ]; then CSC="$c"; break; fi
-done
-if [ -z "$CSC" ] && command -v mcs >/dev/null; then CSC=mcs; fi
-if [ -z "$CSC" ]; then
-  echo "No C# compiler (Windows' csc.exe, or Mono's mcs): FrontEndTV-Installateur.exe not built."
-else
-  # The app's icon in every size Windows uses (16 to 192 px), for the .exe and its window
-  "${JAVA_HOME:+$JAVA_HOME/bin/}java" installer/MakeIcon.java app/res/drawable-nodpi/icon.png out/app.ico
-  # -codepage: Windows' csc otherwise reads the sources in the ANSI code page (the accents)
-  CP=-codepage:65001; [ "$CSC" = mcs ] && CP=
-  "$CSC" -nologo $CP -optimize+ -target:winexe -win32icon:out/app.ico \
-    -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:System.Numerics.dll \
-    -resource:FrontEndTV.apk,FrontEndTV.apk -resource:app/res/drawable-nodpi/icon.png,icon.png -resource:out/app.ico,app.ico \
-    -out:FrontEndTV-Installateur.exe installer/Program.cs installer/Engine.cs installer/Adb.cs
-  echo "Built FrontEndTV-Installateur.exe ($(du -h FrontEndTV-Installateur.exe | cut -f1)): the installer for Windows, in one file."
-fi
+# --- FrontEndTV-Installateur.exe: the Windows installer (SKIP_EXE=1 to leave it out)
+[ "${SKIP_EXE:-}" = 1 ] || bash installer/build-exe.sh

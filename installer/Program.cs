@@ -3,6 +3,8 @@
 //
 // Options (facultatives) : -Ip 192.168.1.50 -Name Florian -Region FR -Key <clé TMDB> -Apk <fichier>
 //                          -Original (remet l'accueil d'origine) -Auto (lance tout de suite, sans rien demander)
+//                          -SelfTest <image.png> (ouvre la fenêtre, l'enregistre en image et se ferme : la vérification
+//                          de la compilation GitHub sur un vrai Windows)
 
 using System;
 using System.Collections.Generic;
@@ -16,30 +18,63 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("FrontEndTV — installateur")]
+// Les informations du fichier (clic droit → Propriétés → Détails) ; BuildInfo est écrit par installer/build-exe.sh.
+[assembly: AssemblyTitle("FrontEndTV - installateur")]
 [assembly: AssemblyDescription("Installe FrontEndTV sur une Google TV / Android TV")]
 [assembly: AssemblyProduct("FrontEndTV")]
 [assembly: AssemblyCompany("Florian")]
 [assembly: AssemblyCopyright("© Florian")]
-[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyVersion(FrontEndTV.Setup.BuildInfo.Version)]
+[assembly: AssemblyFileVersion(FrontEndTV.Setup.BuildInfo.Version)]
+[assembly: AssemblyInformationalVersion(FrontEndTV.Setup.BuildInfo.Version)]
 
 namespace FrontEndTV.Setup {
 
 static class Program {
     [STAThread]
     static int Main(string[] args) {
-        try { SetProcessDPIAware(); } catch (Exception) {}   // net à 125 %, 150 %... (sinon Windows étire une image floue)
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Options o; bool auto;
-        Parse(args, out o, out auto);
-        Application.Run(new MainForm(o, auto));
-        return 0;
+        // Jamais de fermeture sans un mot : toute erreur est montrée et notée dans un fichier
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (s, e) => Crash(e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (s, e) => Crash(e.ExceptionObject as Exception);
+        try {
+            try { SetProcessDPIAware(); } catch (Exception) {}   // net à 125 %, 150 %... (sinon Windows étire une image floue)
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Options o; bool auto; string selfTest;
+            Parse(args, out o, out auto, out selfTest);
+            quiet = selfTest != null;
+            var form = new MainForm(o, auto, selfTest);
+            Application.Run(form);
+            return form.ExitCode;
+        } catch (Exception e) {
+            Crash(e);
+            return 1;
+        }
     }
 
-    static void Parse(string[] args, out Options o, out bool auto) {
+    static bool crashed, quiet;   // quiet : -SelfTest, personne pour fermer une fenêtre d'erreur
+
+    static void Crash(Exception e) {
+        if (crashed) return;
+        crashed = true;
+        string file = Path.Combine(Engine.Home, "installateur-erreur.txt");
+        try {
+            Directory.CreateDirectory(Engine.Home);
+            File.AppendAllText(file, "=== " + DateTime.Now.ToString("s") + " " + BuildInfo.Version + Environment.NewLine
+                    + (e == null ? "?" : e.ToString()) + Environment.NewLine);
+        } catch (Exception) {}
+        if (!quiet) try {
+            MessageBox.Show("L'installateur a rencontré une erreur :\n\n" + (e == null ? "?" : e.Message)
+                    + "\n\nLes détails sont dans :\n" + file, "FrontEndTV", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        } catch (Exception) {}
+        Environment.Exit(1);
+    }
+
+    static void Parse(string[] args, out Options o, out bool auto, out string selfTest) {
         o = new Options();
         auto = false;
+        selfTest = null;
         for (int i = 0; i < args.Length; i++) {
             string a = args[i].TrimStart('-', '/').ToLowerInvariant();
             string next = i + 1 < args.Length ? args[i + 1] : "";
@@ -51,6 +86,7 @@ static class Program {
                 case "apk": o.Apk = next; i++; break;
                 case "original": o.Original = true; break;
                 case "auto": auto = true; break;
+                case "selftest": selfTest = next; i++; break;
             }
         }
     }
@@ -124,9 +160,13 @@ sealed class MainForm : Form, IReport {
     Thread worker;
     readonly ManualResetEvent userDone = new ManualResetEvent(false);
 
-    public MainForm(Options o, bool auto) {
+    readonly string selfTest;   // -SelfTest : l'image où enregistrer la fenêtre
+    public int ExitCode { get; private set; }
+
+    public MainForm(Options o, bool auto, string selfTest) {
         options = o;
         this.auto = auto;
+        this.selfTest = selfTest;
         // L'échelle de l'écran (125 %, 150 %...), réduite si la fenêtre ne tiendrait pas en hauteur
         float dpi;
         using (Graphics g = CreateGraphics()) dpi = g.DpiX / 96f;
@@ -188,8 +228,40 @@ sealed class MainForm : Form, IReport {
 
     protected override void OnShown(EventArgs e) {
         base.OnShown(e);
+        if (selfTest != null) { SelfTest(); return; }
         if (options.Original && auto) { Start(true); return; }
         if (ip.Value.Length == 0) Search(); else if (auto) Start(options.Original);
+    }
+
+    /** -SelfTest : les deux pages enregistrées en images (la 2e avec des étapes d'exemple), puis on ferme. */
+    void SelfTest() {
+        var timer = new System.Windows.Forms.Timer();
+        timer.Interval = 1500;
+        timer.Tick += (s, e) => {
+            timer.Stop();
+            Snapshot(selfTest);
+            setup.Visible = false;
+            progress.Visible = true;
+            pageTitle.Text = "Installation de FrontEndTV";
+            steps.Reset(new[] { "Connexion à la TV", "Installation de l'appli", "Activation comme écran d'accueil" });
+            steps.Set(Engine.StepConnect, StepState.Done, "TCL Smart TV Pro · Android 11");
+            steps.Set(Engine.StepInstall, StepState.Running, "Envoi de l'appli (1,4 Mo)... 45 %");
+            Say(Tone.Action, "Regarde la TV : accepte « Autoriser le débogage USB ? » en cochant « Toujours autoriser ».");
+            Refresh();
+            Snapshot(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(selfTest)),
+                    Path.GetFileNameWithoutExtension(selfTest) + "-2.png"));
+            ExitCode = 0;
+            Close();
+        };
+        timer.Start();
+    }
+
+    void Snapshot(string file) {
+        Control page = setup.Visible ? setup : progress;   // la page entière, sans la barre de titre
+        using (var b = new Bitmap(page.Width, page.Height)) {
+            page.DrawToBitmap(b, new Rectangle(Point.Empty, page.Size));
+            b.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+        }
     }
 
     // MARK: - En-tête commun
@@ -311,7 +383,8 @@ sealed class MainForm : Form, IReport {
         rescan.Interval = 4000;
         rescan.Tick += (s, e) => {
             rescan.Stop();
-            if (setup.Visible && ip.Value.Length == 0) Search();
+            // Toutes les 4 s les appareils déjà connus de Windows ; tout le réseau une fois sur cinq (~20 s)
+            if (setup.Visible && ip.Value.Length == 0) Search(++rescans % 5 == 0);
         };
         countdown.Interval = 1000;
         countdown.Tick += (s, e) => {
@@ -319,8 +392,10 @@ sealed class MainForm : Form, IReport {
         };
     }
 
-    /** Cherche la TV : celle de la dernière fois, sinon tout le réseau local. */
-    void Search() {
+    int rescans;
+
+    /** Cherche la TV : celle de la dernière fois, sinon sur le réseau local (voir Engine.FindTVs). */
+    void Search(bool wholeNetwork = true) {
         rescan.Stop();
         if (searching) return;
         searching = true;
@@ -328,7 +403,7 @@ sealed class MainForm : Form, IReport {
         Status("Recherche de la TV sur ton réseau...", Palette.Dim);
         var t = new Thread(() => {
             string last = Engine.LastTV();
-            List<string> found = last != null ? new List<string> { last } : Engine.FindTVs();
+            List<string> found = last != null ? new List<string> { last } : Engine.FindTVs(wholeNetwork);
             Post(() => {
                 searching = false;
                 search.LinkColor = Palette.AccentHover;
