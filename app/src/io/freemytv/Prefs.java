@@ -320,13 +320,59 @@ final class Prefs {
         return false;
     }
 
-    /** The remote's buttons we handle: the brand's (KEYS), or the learned ones. */
+    /** The remote's buttons we handle: the brand's (KEYS); elsewhere the learned ones, then those found by themselves. */
     static int[] keys() {
         if (!RemoteKeys.LEARNED) return KEYS;
+        java.util.LinkedHashMap<Integer, String> found = detectedKeys();
         synchronized (keyMap) {
             loadKeys();
-            return learned.clone();
+            List<Integer> all = new ArrayList<>();
+            for (int key : learned) all.add(key);
+            for (int key : found.keySet()) if (!all.contains(key)) all.add(key);
+            int[] out = new int[all.size()];
+            for (int i = 0; i < out.length; i++) out[i] = all.get(i);
+            return out;
         }
+    }
+
+    // Buttons found by themselves (RemoteKeys.onWindow): "button=package the TV opened" lines, in a file of their own.
+    private static File detectedFile() {
+        return new File(app.getFilesDir(), "remote-detected.txt");
+    }
+
+    /** Button → the app the TV itself opened with it. */
+    static java.util.LinkedHashMap<Integer, String> detectedKeys() {
+        java.util.LinkedHashMap<Integer, String> map = new java.util.LinkedHashMap<>();
+        File f = detectedFile();
+        if (!f.exists()) return map;
+        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                int eq = line.indexOf('=');
+                if (eq > 0) {
+                    try { map.put(Integer.parseInt(line.substring(0, eq)), line.substring(eq + 1)); }
+                    catch (NumberFormatException ignored) {}
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        return map;
+    }
+
+    /** A button opened `pkg` (the TV did it): noted, for Settings > Remote Buttons. */
+    static synchronized void noticeKey(int id, String pkg) {
+        java.util.LinkedHashMap<Integer, String> map = detectedKeys();
+        if (pkg.equals(map.get(id))) return;
+        map.put(id, pkg);
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<Integer, String> e : map.entrySet()) sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
+        File tmp = new File(app.getFilesDir(), "remote-detected." + android.os.Process.myPid() + ".tmp");
+        try (FileOutputStream out = new FileOutputStream(tmp)) {
+            out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            return;
+        }
+        if (tmp.renameTo(detectedFile())) version++;
     }
 
     /** Package the key opens ("" = nothing). */
@@ -349,6 +395,8 @@ final class Prefs {
                     if (e.getKey() != keyCode) sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
                     else if (!pkg.isEmpty()) sb.append(keyCode).append('=').append(pkg).append('\n');
                 }
+                // A button found by itself (not in the file yet): its own line once an app is picked
+                if (!keyMap.containsKey(keyCode) && !pkg.isEmpty()) sb.append(keyCode).append('=').append(pkg).append('\n');
             } else {
                 for (int key : KEYS) sb.append(key).append('=').append(key == keyCode ? pkg : keyApp(key)).append('\n');
             }

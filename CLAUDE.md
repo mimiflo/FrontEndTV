@@ -18,7 +18,7 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | `Prefs.java` | Réglages persistants (prénom, clé TMDB, pays, ville…) |
 | `app/assets/i18n/*.json` | Traductions (clé = texte anglais) |
 | `app/res/drawable-nodpi/` | `icon.png` (512×512) et `banner.png` (1280×720), dessinés par `tools/make_art.py` (`python3 tools/make_art.py`, Pillow ; ne pas retoucher à la main) |
-| `RemoteKeys.java` / `RemoteKeyService.java` | Touches d'applis de la télécommande : codes connus (TCL, Vestel, KTC, Sony, Xiaomi, Formovie) ; ailleurs (Philips…) touches **apprises** (Boutons de la télécommande → Apprendre une touche ; code de balayage, sinon code de touche ; fichiers `remote-learn` / `remote-heard` entre les processus) |
+| `RemoteKeys.java` / `RemoteKeyService.java` | Touches d'applis de la télécommande : codes connus (TCL, Vestel, KTC, Sony, Xiaomi, Formovie) ; ailleurs (Philips…) touches **trouvées toutes seules** : une touche inconnue suivie (≤ 2,5 s) de l'ouverture d'une appli est notée avec elle (`RemoteKeys.onWindow` → `remote-detected.txt`) et listée « Touche Netflix — Gérée par la TV » ; ou **apprises** (Apprendre une touche ; fichiers `remote-learn` / `remote-heard` entre les processus). Une touche = son code de balayage, sinon son code de touche |
 | `installer/Program.cs` | Installateur Windows `FrontEndTV-Installateur.exe` : la fenêtre (thème sombre/violet, WinForms) |
 | `installer/Engine.cs` | Installateur : tout le travail avec la TV, sans interface |
 | `installer/Adb.cs` | Installateur : client ADB intégré (clé RSA, `shell:`, installation par `exec:cmd package install -S`) — pas d'adb.exe |

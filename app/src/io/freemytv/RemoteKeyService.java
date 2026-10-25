@@ -13,7 +13,10 @@ public class RemoteKeyService extends AccessibilityService {
         return RemoteKeys.onKey(this, event);
     }
 
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) {}
+    /** A window opened: right after an unknown button, it tells which app that button opens (RemoteKeys.onWindow). */
+    @Override public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) RemoteKeys.onWindow(this, event.getPackageName());
+    }
 
     @Override public void onInterrupt() {}
 }

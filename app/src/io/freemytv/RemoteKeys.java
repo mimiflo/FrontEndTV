@@ -21,9 +21,11 @@ import android.view.KeyEvent;
  * (partnercustomizer) turns into PatchWall. The filter sees it first, and by default it opens the home screen.
  * On Xiaomi TVs sold in Russia, the Okko, VK, Rutube, KION, Wink and IVI buttons are global keys too, for Xiaomi's
  * hot-key receiver (partnercustomizer's GlobalKeyReceiver).
- * On every other TV (Philips and the rest; not Fire TV), the person teaches FrontEndTV the buttons: Settings > Remote
- * Buttons > Learn a button, then a press on it. A button is known by its scan code (the remote's own code, which tells
- * apart buttons that share a key code), or its key code when it has none.
+ * On every other TV (Philips and the rest; not Fire TV), the buttons are found by themselves: when a button we don't
+ * know is pressed and an app opens right after (the TV's own Netflix button opening Netflix), the button is noted with
+ * that app (Prefs.noticeKey) and shows in Settings > Remote Buttons, where the person can make it open another app.
+ * A button that opens nothing can be taught there (Learn a button, then a press on it). A button is known by its scan
+ * code (the remote's own code, which tells apart buttons that share a key code), or its key code when it has none.
  */
 final class RemoteKeys {
     private RemoteKeys() {}
@@ -117,6 +119,23 @@ final class RemoteKeys {
         return f.exists() && age >= 0 && age < 60_000;
     }
 
+    // MARK: - Buttons found by themselves (the TV opens an app right after a button)
+
+    private static volatile int lastId;
+    private static volatile long lastAt;
+
+    /** A window of `pkg` opened: within 2.5 s of a button press, that button opens that app. */
+    static void onWindow(Context c, CharSequence pkg) {
+        int id = lastId;
+        if (!LEARNED || id == 0 || pkg == null || android.os.SystemClock.uptimeMillis() - lastAt > 2500) return;
+        lastId = 0;
+        String p = pkg.toString();
+        // Not this app, not the system's own windows (volume, notices), only apps that open from the home screen
+        if (p.equals(c.getPackageName()) || p.equals("android") || p.startsWith("com.android.systemui")) return;
+        if (launchIntent(c.getPackageManager(), p) == null) return;
+        Prefs.noticeKey(id, p);
+    }
+
     private static void hear(Context c, int id) {
         try (java.io.FileOutputStream out = new java.io.FileOutputStream(heardFile(c))) {
             out.write(String.valueOf(id).getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -153,9 +172,15 @@ final class RemoteKeys {
         }
         boolean ours = false;
         for (int key : Prefs.keys()) ours |= key == keyCode;
-        if (!ours) return false;
-        String pkg = Prefs.keyApp(keyCode);
-        if (pkg.isEmpty()) return false;   // "Nothing": the key goes on as if we weren't here
+        String pkg = ours ? Prefs.keyApp(keyCode) : "";
+        if (pkg.isEmpty()) {
+            // Left to the TV: if an app opens right after, it's this button's (onWindow)
+            if (LEARNED && e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                lastId = keyCode;
+                lastAt = android.os.SystemClock.uptimeMillis();
+            }
+            return false;   // "Nothing": the key goes on as if we weren't here
+        }
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
             // Our own package means the home screen in use (Xiaomi's Mi button): ours, or the TV's own after the
             // watchdog handed it back. Not the settings app our launcher icon opens.

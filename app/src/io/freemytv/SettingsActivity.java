@@ -1100,9 +1100,15 @@ public class SettingsActivity extends Activity {
 
         private String[] keyLabels() {
             if (RemoteKeys.LEARNED) {
-                int n = Prefs.keys().length;
+                int[] keys = Prefs.keys();
+                java.util.Map<Integer, String> found = Prefs.detectedKeys();
+                int n = keys.length;
                 String[] l = new String[n + 1];
-                for (int i = 0; i < n; i++) l[i] = Ui.trf("Button {n}", "n", i + 1);
+                for (int i = 0; i < n; i++) {
+                    // Named after the app the TV opens with it ("Netflix button"), else numbered
+                    String tv = found.get(keys[i]);
+                    l[i] = tv != null ? Ui.trf("{app} button", "app", appName(tv)) : Ui.trf("Button {n}", "n", i + 1);
+                }
                 l[n] = Ui.tr("+ Learn a button");
                 return l;
             }
@@ -1119,14 +1125,36 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] keyValues() {
-            int n = Prefs.keys().length;
+            int[] keys = Prefs.keys();
+            int n = keys.length;
             String[] v = new String[n + (RemoteKeys.LEARNED ? 1 : 0)];
-            if (RemoteKeys.LEARNED) v[n] = learning ? Ui.tr("Press it…") : "";
+            if (RemoteKeys.LEARNED) {
+                v[n] = learning ? Ui.tr("Press it…") : "";
+                java.util.Map<Integer, String> found = Prefs.detectedKeys();
+                for (int i = 0; i < n; i++) {
+                    String pkg = Prefs.keyApp(keys[i]), tv = found.get(keys[i]);
+                    // Nothing picked: the TV does what it always did with it
+                    v[i] = !pkg.isEmpty() ? appName(pkg) : tv != null ? Ui.tr("Handled by the TV") : Ui.tr("Nothing");
+                }
+                return v;
+            }
             for (int i = 0; i < n; i++) {
                 int at = appPkgs.indexOf(Prefs.keyApp(Prefs.keys()[i]));
                 v[i] = at >= 0 ? appLabels.get(at) : Ui.tr("Not installed");
             }
             return v;
+        }
+
+        /** An app's name, as in the app list (its package if it isn't there). */
+        private String appName(String pkg) {
+            int at = appPkgs.indexOf(pkg);
+            if (at >= 0) return appLabels.get(at);
+            try {
+                android.content.pm.PackageManager pm = getContext().getPackageManager();
+                return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
+            } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+                return pkg;
+            }
         }
 
         /** Installed TV apps, by name, after "Nothing": what a remote button can open. */
@@ -1487,7 +1515,7 @@ public class SettingsActivity extends Activity {
                         : RemoteKeys.SONY ? Ui.tr("Sony default: the button opens what it always did.")
                         : RemoteKeys.FORMOVIE ? Ui.tr("The other buttons: the TV itself controls them.")
                         : RemoteKeys.XIAOMI ? Ui.tr("Xiaomi default: the button opens what it always did.")
-                        : RemoteKeys.LEARNED ? Ui.tr("Nothing forgets the button: it works as before.")
+                        : RemoteKeys.LEARNED ? Ui.tr("Buttons add themselves here once you use them.")
                         : RemoteKeys.supported() ? Ui.tr("Disney and Globoplay: the TV itself controls those buttons.")
                         : Ui.tr("TCL remote buttons: on this TV they work as always."), LIST_X * k + 30 * k, hy + 38 * k, hint);
             }
