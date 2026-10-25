@@ -1,0 +1,29 @@
+# Vérifie que FrontEndTV compile à chaque push (l'APK produit est signé avec une clé jetable : pour tester seulement).
+name: Compilation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Outils Android
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" \
+            "build-tools;36.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrontEndTV-test
+          path: FrontEndTV.apk
