@@ -284,7 +284,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Spring[] cardFocus = new Spring[3];
     private final RectF[] cardRects = new RectF[3];
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
-    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote;
+    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote, lTvLabel;
     private Shader lightGradient;
 
     // Shelf
@@ -376,6 +376,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private int w, h;
     private float k = 1;
     private String clockText = "", dateText = "", weatherLine = "";
+    private String oldClockText = "";   // the time before, while the new one rolls in
+    private long clockAnimAt;           // when the minute changed (animClock); 0: no animation
     /** "Off in 42 min" next to the round buttons while the sleep timer runs (Settings > Sleep Timer); "" otherwise. */
     private String sleepText = "";
     private long weatherLineAt = -1;
@@ -622,6 +624,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         updateSleep();      // a timer just set in Settings shows at once, not at the next tick
         if (sheetOpen) closeSheet();
         sheet.snap(sheet.target);
+        focusTv(true);
         motionDirty = true;
         invalidateAll();
         idle = false;
@@ -877,6 +880,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (tab != 0) selectTab(0);
         retarget(!animated);
+        focusTv(!animated);
         motionDirty = true;
     }
 
@@ -1020,6 +1024,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lWeather = Ui.text(Ui.medium, 34 * k, L_DIM);
         hClock = Ui.numbers(Ui.light, 112 * k, L_INK);
         hClock.setLetterSpacing(-0.01f);
+        lTvLabel = Ui.text(Ui.semibold, 28 * k, 0xFFFFFFFF);
         hGreet = Ui.text(Ui.semibold, 20 * k, L_FAINT);
         hGreet.setLetterSpacing(0.14f);
         hDate = Ui.text(Ui.semibold, 30 * k, L_INK);
@@ -1112,7 +1117,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (e >= 1) { tabAnimAt = 0; cardsAlpha = 1; } else tabAnim = true;
             heroDirty = true;
         }
-        heroMoving |= tabAnim;
+        boolean clockAnim = false;
+        if (clockAnimAt != 0) {
+            if (up - clockAnimAt >= CLOCK_ROLL_MS) clockAnimAt = 0; else clockAnim = true;
+            heroDirty = true;
+        }
+        heroMoving |= tabAnim | clockAnim;
         boolean glowOn = (zone == Z_SHELF || zone == Z_CARDS || zone == Z_TOP) && !drawerOpen && !sheetOpen
                 && drawer.value < 0.01f && sheet.value < 0.01f;
         if (glowOn) {
@@ -1166,6 +1176,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawerWasMoving = drawerMoving;
         tilesDirty = statusDirty = heroDirty = drawerDirty = gridDirty = motionDirty = false;
         if (updateClock()) {
+            clockAnim = clockAnimAt != 0;   // the next frames come at once: the digits start rolling now
             layoutStatus();
             status.invalidate();
             if (hero != null && hero.clock) {
@@ -1178,7 +1189,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Busy: something is moving, or the sheet or the drawer is open.
         boolean busy = tilesMoving || statusMoving || heroMoving || drawerItemsMoving || gridMoving || drawerMoving
                 || sheetMoving || toastFading || heroFading || bgFading || nightMoving || sheetOpen || sheet.value > 0.001f
-                || drawerOpen || drawer.value > 0.001f || toast != null || !toasts.isEmpty() || glowOn || tabAnim || skyFading;
+                || drawerOpen || drawer.value > 0.001f || toast != null || !toasts.isEmpty() || glowOn || tabAnim || skyFading
+                || clockAnim;
         idle = !busy;
         if (PERF) perfFrame(dt, System.nanoTime() - perfLoop);
         if (busy) Choreographer.getInstance().postFrameCallback(this);
@@ -1285,6 +1297,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         long now = System.currentTimeMillis();
         long minute = now / 60_000;
         if (minute == clockMinute || clockPaint == null) return false;
+        // A new minute (not the first time it's read): the digits that change roll in (drawClockText)
+        if (clockMinute != 0 && !clockText.isEmpty()) {
+            oldClockText = clockText;
+            clockAnimAt = animClock();
+        }
         clockMinute = minute;
         clockText = Ui.clock(now);
         dateText = Ui.date(now);
@@ -3414,8 +3431,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         float b = L_BUTTON * k, right = CONTENT_R * k, cy = L_BUTTON_CY * k;
         for (int i = lightButtons.size() - 1; i >= 0; i--) {
-            topRects[3 + i].set(right - b, cy - b / 2, right, cy + b / 2);
-            right -= b + L_BUTTON_GAP * k;
+            float bw = isTv(i) ? tvButtonWidth() : b;
+            topRects[3 + i].set(right - bw, cy - b / 2, right, cy + b / 2);
+            right -= bw + L_BUTTON_GAP * k;
         }
         float top = L_CARDS_TOP * k, ch = L_CARD_H * k, g = L_CARD_GAP * k, left = MARGIN * k, tall = L_TALL_W * k;
         float wide = (CONTENT_R - MARGIN) * k - 2 * tall - 2 * g;
@@ -3427,6 +3445,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Symbols.warm(getContext(), it.symbol, 27 * k);
             Symbols.warm(getContext(), it.symbol, 27 * k * 1.1f);
         }
+        Symbols.warm(getContext(), "live_tv", TV_ICON * k);
+        Symbols.warm(getContext(), "live_tv", TV_ICON * k * 1.06f);
         Symbols.warmWeather(getContext(), 40 * k);
         heroDirty = statusDirty = true;
     }
@@ -3553,7 +3573,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void drawHeader(Canvas c) {
         if (hClock == null) return;
         float x = MARGIN * k, base = 128 * k;
-        c.drawText(clockText, x - Ui.leftBearing(hClock, clockText), base, hClock);
+        drawClockText(c, hClock, x - Ui.leftBearing(hClock, clockText), base);
         float bx = x + hClock.measureText(clockText) + 34 * k;
         int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
         boolean fr = Ui.language.startsWith("fr");
@@ -3644,6 +3664,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (topIndex < 3) {
                 cell.set(b.centerX() - b.width() * s / 2, b.centerY() - b.height() * s / 2, b.centerX() + b.width() * s / 2, b.centerY() + b.height() * s / 2);
                 rad = cell.height() / 2;
+            } else if (isTv(topIndex - 3)) {
+                s = 1 + 0.06f * v;
+                cell.set(b.centerX() - b.width() * s / 2, b.centerY() - b.height() * s / 2, b.centerX() + b.width() * s / 2, b.centerY() + b.height() * s / 2);
+                rad = cell.height() / 2;
             } else {
                 float r = b.width() / 2 * s;
                 cell.set(b.centerX() - r, b.centerY() - r, b.centerX() + r, b.centerY() + r);
@@ -3658,10 +3682,65 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return Recs.hasKey(getContext());
     }
 
+    private static final float CLOCK_ROLL_MS = 650;
+
+    /**
+     * The time; for CLOCK_ROLL_MS after a new minute, each digit that changed rolls: the old one slides up and fades,
+     * the new one comes up from below with a little bounce, each digit 60 ms after the one on its left. Inside the
+     * line's box, like a counter. The rest of the time it's a plain drawText.
+     */
+    private void drawClockText(Canvas c, Paint p, float x, float base) {
+        float t = clockAnimAt == 0 ? 1 : Ui.clamp((animClock() - clockAnimAt) / CLOCK_ROLL_MS);
+        String now = clockText, old = oldClockText;
+        if (t >= 1 || old.isEmpty()) {
+            c.drawText(now, x, base, p);
+            return;
+        }
+        float cap = 2 * Ui.halfCap(p), travel = cap * 1.25f;
+        int alpha = p.getAlpha();
+        c.save();
+        c.clipRect(x - cap, base - cap * 1.35f, x + p.measureText(now.length() >= old.length() ? now : old) + cap, base + cap * 0.35f);
+        boolean same = now.length() == old.length();
+        int first = 0;   // the first digit that changes starts at once, the next ones 60 ms apart
+        while (same && first < now.length() && now.charAt(first) == old.charAt(first)) first++;
+        for (int i = 0; i < now.length(); i++) {
+            String ch = now.substring(i, i + 1);
+            float cx = x + p.measureText(now, 0, i);
+            if (same && ch.equals(old.substring(i, i + 1))) {
+                p.setAlpha(alpha);
+                c.drawText(ch, cx, base, p);
+                continue;
+            }
+            // Each digit starts 60 ms after the one on its left
+            float delay = 60f * Math.min(Math.max(0, i - first), 4);
+            float d = Ui.clamp((t * CLOCK_ROLL_MS - delay) / (CLOCK_ROLL_MS - delay));
+            float in = backOut(d), out = 1 - (1 - d) * (1 - d) * (1 - d);
+            if (same) {
+                p.setAlpha(Math.round(alpha * (1 - out)));
+                c.drawText(old.substring(i, i + 1), cx, base - travel * out, p);
+            }
+            p.setAlpha(Math.round(alpha * Ui.clamp(d * 1.6f)));
+            c.drawText(ch, cx, base + travel * (1 - in), p);
+        }
+        if (!same) {   // 9:59 → 10:00: the old time leaves as a whole
+            float out = 1 - (1 - t) * (1 - t) * (1 - t);
+            p.setAlpha(Math.round(alpha * (1 - out)));
+            c.drawText(old, x, base - travel * out, p);
+        }
+        p.setAlpha(alpha);
+        c.restore();
+    }
+
+    /** 0 → 1 that goes a little past 1 and settles back (the "back out" ease). */
+    private static float backOut(float t) {
+        float c1 = 1.5f, u = t - 1;
+        return 1 + (c1 + 1) * u * u * u + c1 * u * u;
+    }
+
     private void drawClock(Canvas c) {
         float x = MARGIN * k;
         c.drawText(dateText, x - Ui.leftBearing(lDate, dateText), L_DATE_BASE * k, lDate);
-        c.drawText(clockText, x - Ui.leftBearing(lClock, clockText), L_CLOCK_BASE * k, lClock);
+        drawClockText(c, lClock, x - Ui.leftBearing(lClock, clockText), L_CLOCK_BASE * k);
         HomeData.Weather wx = data.weather;
         if (!Prefs.weather() || Double.isNaN(wx.temp)) return;
         if (data.weatherAt != weatherLineAt || Prefs.version != weatherLinePrefs || !Ui.language.equals(weatherLineLanguage)) {
@@ -3750,6 +3829,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < lightButtons.size(); i++) {
             HomeApps.Item it = lightButtons.get(i);
             RectF r = topRects[3 + i];
+            if (isTv(i)) {
+                drawTvButton(c, r, Ui.clamp(topFocus[3 + i].value));
+                continue;
+            }
             float f = Ui.clamp(topFocus[3 + i].value), s = 1 + 0.1f * f, rad = r.width() / 2 * s;
             cell.set(r.centerX() - rad, r.centerY() - rad, r.centerX() + rad, r.centerY() + rad);
             tmp.set(cell);
@@ -3782,6 +3865,73 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float tw = lQuote.measureText(sleepText), size = lQuote.getTextSize();
         c.drawText(sleepText, right - tw, cy + Ui.halfCap(lQuote), lQuote);
         Symbols.draw(getContext(), c, "bedtime", right - tw - size * 0.9f, cy, size, lQuote.getColor());
+    }
+
+    // MARK: - The TV button: a violet pill with the TV icon and its name, next to the round buttons
+
+    private static final float TV_ICON = 32;
+    private static final int TV_VIOLET = 0xFF8B6CFF, TV_ORCHID = 0xFFB36CFF, TV_DEEP = 0xFF4B23D9;
+    private Boolean tvAvailable;   // the TV has a channels app (asked once: it reads the package list)
+
+    /** Top button `i` is the TV one (Live TV in Settings > Top Buttons). */
+    private boolean isTv(int i) {
+        return i >= 0 && i < lightButtons.size() && HomeApps.TOP_LIVE.equals(lightButtons.get(i).key);
+    }
+
+    private int tvButton() {
+        for (int i = 0; i < lightButtons.size(); i++) if (isTv(i)) return i;
+        return -1;
+    }
+
+    private float tvButtonWidth() {
+        return (26 + TV_ICON + 12 + 30) * k + (lTvLabel == null ? 40 * k : lTvLabel.measureText(tvLabel()));
+    }
+
+    private static String tvLabel() {
+        return "TV";
+    }
+
+    /**
+     * Violet gradient with a violet glow under it, the white icon and "TV". Focused (the tvOS focus, like the round
+     * ones): it grows and turns white, with the icon and the name in deep violet.
+     */
+    private void drawTvButton(Canvas c, RectF r, float f) {
+        float s = 1 + 0.06f * f, hw = r.width() / 2 * s, hh = r.height() / 2 * s, rad = hh;
+        cell.set(r.centerX() - hw, r.centerY() - hh, r.centerX() + hw, r.centerY() + hh);
+        tmp.set(cell);
+        tmp.offset(0, (8 + 8 * f) * k);
+        shadow.setColor(Ui.alpha(0xFF5B2DFF, 0.38f + 0.22f * f));
+        shadows.draw(c, tmp, rad, SHADOW_BLUR * k, shadow);
+        fill.setColor(0xFFFFFFFF);
+        fill.setShader(new android.graphics.LinearGradient(cell.left, 0, cell.right, 0, TV_VIOLET, TV_ORCHID,
+                android.graphics.Shader.TileMode.CLAMP));
+        c.drawRoundRect(cell, rad, rad, fill);
+        fill.setShader(null);
+        if (f > 0.01f) {
+            fill.setColor(Ui.alpha(0xFFFFFFFF, f));
+            c.drawRoundRect(cell, rad, rad, fill);
+        }
+        border.setStrokeWidth(1.5f * k);
+        border.setColor(Ui.alpha(0xFFFFFFFF, 0.28f * (1 - f)));
+        c.drawRoundRect(cell, rad, rad, border);
+        int ink = blend(0xFFFFFFFF, TV_DEEP, f);
+        float icon = TV_ICON * k * s, x = cell.left + 26 * k * s;
+        Symbols.draw(getContext(), c, "live_tv", x + icon / 2, cell.centerY(), icon, ink);
+        lTvLabel.setColor(ink);
+        lTvLabel.setTextSize(28 * k * s);
+        c.drawText(tvLabel(), x + icon + 12 * k * s, cell.centerY() + Ui.halfCap(lTvLabel), lTvLabel);
+        lTvLabel.setTextSize(28 * k);
+    }
+
+    /** The home screen opens on the TV button (and comes back to it with Home or from an app), when the TV has one. */
+    private void focusTv(boolean snap) {
+        int i = tvButton();
+        if (i < 0 || drawerOpen || sheetOpen) return;
+        if (tvAvailable == null) tvAvailable = HomeApps.liveTv(getContext()) != null;
+        if (!tvAvailable) return;
+        zone = Z_TOP;
+        topIndex = 3 + i;
+        retarget(snap);
     }
 
     private boolean moveLight(int dx, int dy) {

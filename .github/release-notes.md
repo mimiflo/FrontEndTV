@@ -1,6 +1,7 @@
-## FrontEndTV 1.2.2
+## FrontEndTV 1.3
 
-- **TV** : plus de plantage pendant « Mesure de FrontEndTV… » quand on change d'écran d'accueil. Le changement ne fait plus clignoter l'écran (le temps du bouton Accueil n'est plus mesuré ; la mémoire l'est toujours, en silence).
-- **Installateur** : ne se ferme plus sans rien dire (toute erreur est affichée et notée), ne contient plus l'appli en lui (il télécharge celle de sa version depuis cette page et vérifie son empreinte), et cherche la TV plus doucement sur le réseau. Moins de fausses alertes des antivirus.
+- **Bouton TV** : en haut à droite, à côté des réglages, une pilule violette « TV » bien visible qui ouvre les chaînes de la TV.
+- **On arrive sur la TV** : au démarrage, avec le bouton Accueil de la télécommande et en revenant d'une appli, la sélection est directement sur le bouton TV (si la TV a une appli de chaînes).
+- **L'heure s'anime** : à chaque nouvelle minute, les chiffres qui changent roulent vers le haut, avec un petit rebond.
 
-**Installer** : télécharge `FrontEndTV-Installateur.exe` et double-clique dessus. Sur la TV, si FrontEndTV 1.2 ou plus est déjà là : Réglages de FrontEndTV → *Mise à jour*.
+**Mettre à jour** : sur la TV, Réglages de FrontEndTV → *Mise à jour*. Ou télécharge `FrontEndTV-Installateur.exe` et double-clique dessus.
