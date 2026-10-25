@@ -137,6 +137,20 @@ final class SleepTimer {
         SleepOverlay.update(c);
     }
 
+    /** The screensaver's "Turn the screen off" (Screensaver): the Sleep key now, on its own thread. */
+    static void sleepNow(Context c) {
+        Context app = c.getApplicationContext();
+        new Thread(() -> {
+            if (!app.getSystemService(PowerManager.class).isInteractive()) return;
+            try (Adb adb = Adb.connect(app, 10_000, null)) {
+                adb.shell("input keyevent KEYCODE_SLEEP");
+                AppLog.w("Screensaver: screen off");
+            } catch (IOException e) {
+                AppLog.w("Screensaver: screen off: " + e.getMessage());
+            }
+        }, "screen-off").start();
+    }
+
     /** The alarm went off (main process): sleep, unless the TV is off, or was turned off since (and on again). */
     static void fire(Context c, long setAt) {
         if (!c.getSystemService(PowerManager.class).isInteractive()) return;

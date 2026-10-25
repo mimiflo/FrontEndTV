@@ -155,16 +155,13 @@ public class SettingsActivity extends Activity {
                 POWER = 6;
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
-        // The layout: a sidebar on the left (logo, version, every page, the one open highlighted) and the page on the
-        // right. The main page ("Home") shows the nine settings as cards on two columns, in three groups, each with
-        // what it's for, and an "About" card (the picks' status and TMDB's credit). What's going on (a switch, an
-        // error, a new version) shows in the card it concerns.
-        private static final float SIDE_W = 480, CONTENT_L = 532, CONTENT_R = 1864, COL_GAP = 24, CARD_H = 104;
+        // The layout: a sidebar on the left (logo, version, the categories) and on the right the open category's
+        // settings, as cards with what each is for; Wi-Fi's are the networks. What's going on (a switch, an error, a
+        // new version) shows in the card it concerns.
+        private static final float SIDE_W = 520, CONTENT_L = 572, CONTENT_R = 1864, CARD_H = 104;
         private static final int UPDATE_ROW = 8;
         /** The other pages: a list in the page's place. */
         private static final float LIST_X = CONTENT_L, LIST_R = CONTENT_R, LIST_TOP = 186, ROW_GAP = 8, CHOICE_H = 104;
-        /** The cards, row by row (two columns; a row's only card takes both). */
-        private static final int[][] GRID = {{0, 1}, {2, 3}, {4}, {5, 6}, {7, 8}};
         private static final int AMBER = 0xFFFFC266, INK = 0xFFFFFFFF;
 
         private final SettingsActivity activity;
@@ -180,7 +177,7 @@ public class SettingsActivity extends Activity {
         private final List<String> shelfOrder = new ArrayList<>();
         private boolean editingTop;
         private int pickFor, pickCurrent, pickScroll;   // pickFor: the remote button (index + 1)
-        private static final int PICK_CITY = 0, PICK_LANGUAGE = -1, PICK_SLEEP = -2, PICK_PLACE = -3;
+        private static final int PICK_CITY = 0, PICK_LANGUAGE = -1, PICK_SLEEP = -2, PICK_PLACE = -3, PICK_SCREEN_OFF = -4;
         /** Sleep Timer's pickers (PICK_SLEEP and below): their choices as {value, name}, and the value now. */
         private final List<String[]> choices = new ArrayList<>();
         private String choiceNow = "";
@@ -201,8 +198,8 @@ public class SettingsActivity extends Activity {
         private int w, h;
         private float k = 1;
         private Paint rowLabel, rowValue, rowSub, header, cellLabel, cellValue, warn, spinner, white, shadow;
-        private Paint pageTitle, pageSub, cardTitle, cardDesc, cardValue, infoPaint, infoSmall, creditPaint, sideBrand,
-                sideVersion, sideHeader, sideItem, cornerTime, cornerDate;
+        private Paint pageTitle, pageSub, cardTitle, cardDesc, cardValue, creditPaint, sideBrand,
+                sideVersion, sideItem, cornerTime, cornerDate;
         private final Paint side = new Paint(), wifi = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         private final Runnable poll = new Runnable() {
@@ -216,6 +213,11 @@ public class SettingsActivity extends Activity {
                 }
                 sleepLeft = SleepTimer.minutesLeft(getContext());
                 readNetwork();
+                if (screen == MAIN && category == CAT_WIFI) {
+                    Wifi.refreshIfStale(getContext());
+                    if (!inSide && focus >= mainRows()) focus = mainRows() - 1;   // the list got shorter
+                    wifiScroll = Math.max(0, Math.min(wifiScroll, wifiList() - (mainRows() - 1)));
+                }
                 hasKey = Recs.hasKey(getContext());
                 recs = Recs.status(getContext());
                 boolean nowBusy = !busyText().isEmpty();
@@ -232,7 +234,7 @@ public class SettingsActivity extends Activity {
                 }
                 wasBusy = nowBusy;
                 invalidate();
-                handler.postDelayed(this, learning ? 250 : busy() || Updater.working() ? 500 : 2000);
+                handler.postDelayed(this, learning ? 250 : busy() || Updater.working() || Wifi.scanning || Wifi.connecting ? 500 : 2000);
             }
         };
 
@@ -277,17 +279,23 @@ public class SettingsActivity extends Activity {
         private String rowValueText(int row) {
             switch (screen) {
                 case MAIN: {
-                    if (row == 0) {
+                    if (inSide) return catName(row) + ", " + Ui.trf("{i} of {n}", "i", row + 1, "n", CATS);
+                    if (category == CAT_WIFI) {
+                        if (row == 0) return "Wi-Fi, " + (Wifi.current.isEmpty() ? Ui.tr("Not connected") : Wifi.current);
+                        Wifi.Network n = wifiNetwork(wifiScroll + row - 1);
+                        return n == null ? Ui.tr("More Wi-Fi Settings")
+                                : n.ssid + (n.ssid.equals(Wifi.current) ? ", " + Ui.tr("Connected") : "");
+                    }
+                    int item = itemAt(row);
+                    if (item == 0) {
                         String busyText = busyText();
                         String value = busy() ? (busyText.isEmpty() ? Ui.tr("Starting…") : busyText)
                                 : freeActive() ? "FrontEndTV" : Ui.tr("Original");
                         return Ui.trf("Home Screen, {mode}", "mode", value);
                     }
-                    if (row == UPDATE_ROW) return Ui.tr("Update") + ", " + Updater.label();
-                    String[] names = {Ui.tr("Screensaver, preview"), Ui.tr("Home Settings"),
-                            Ui.tr("Shelf"), Ui.tr("Top Buttons"), Ui.tr("Remote Buttons"), Ui.tr("Sleep Timer"),
-                            Ui.tr("TV Settings")};
-                    return row - 1 < names.length ? names[row - 1] : "";
+                    if (item == UPDATE_ROW) return Ui.tr("Update") + ", " + Updater.label();
+                    if (item == SCREEN_OFF_ITEM) return itemLabel(item) + ", " + screenOffName(Prefs.screenOff());
+                    return item < 0 ? "" : itemLabel(item);
                 }
                 case HOME_CHOICE: {
                     String name = row == 0 ? "FrontEndTV, " + Ui.tr("no ads, with the new screensaver")
@@ -329,7 +337,7 @@ public class SettingsActivity extends Activity {
         private RectF rowBox(int row) {
             float top, height;
             if (screen == MAIN) {
-                focusBox.set(cardRect(row));
+                focusBox.set(mainBox(row));
                 return focusBox;
             } else if (screen == HOME_CHOICE) {
                 top = LIST_TOP + 20 + row * (CHOICE_H + ROW_GAP);
@@ -364,7 +372,7 @@ public class SettingsActivity extends Activity {
 
         @Override public void doFrame(long frameTimeNanos) {
             if (!running) return;
-            boolean moving = busy() || Updater.working();
+            boolean moving = busy() || Updater.working() || Wifi.scanning || Wifi.connecting;
             for (Spring s : pop) moving |= !s.settled();
             if (moving) invalidate();
             Choreographer.getInstance().postFrameCallback(this);
@@ -401,15 +409,9 @@ public class SettingsActivity extends Activity {
             cardDesc = Ui.text(Ui.regular, 22 * k, 0xFF9AA3B5);
             cardValue = Ui.text(Ui.medium, 24 * k, 0xFFB9A6FF);
             cardValue.setTextAlign(Paint.Align.RIGHT);
-            infoPaint = Ui.text(Ui.semibold, 26 * k, 0xFF141B29);
-            infoPaint.setTextAlign(Paint.Align.CENTER);
-            infoSmall = Ui.text(Ui.semibold, 20 * k, 0xFF0B101A);
-            infoSmall.setTextAlign(Paint.Align.CENTER);
             creditPaint = Ui.text(Ui.regular, 19 * k, 0xFF717A8C);
             sideBrand = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
             sideVersion = Ui.text(Ui.regular, 22 * k, 0xFF9AA3B5);
-            sideHeader = Ui.text(Ui.semibold, 19 * k, 0xFF8A93A6);
-            sideHeader.setLetterSpacing(0.08f);
             sideItem = Ui.text(Ui.medium, 27 * k, 0xFFC9CFDB);
             cornerTime = Ui.numbers(Ui.semibold, 34 * k, 0xFFFFFFFF);
             cornerTime.setTextAlign(Paint.Align.RIGHT);
@@ -435,7 +437,7 @@ public class SettingsActivity extends Activity {
 
         private int rowCount() {
             switch (screen) {
-                case MAIN: return 9;
+                case MAIN: return mainRows();
                 case HOME_CHOICE: return 2;
                 case HOME_SETTINGS: return Math.min(SETTINGS_VISIBLE, settingLabels().length);
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
@@ -478,8 +480,9 @@ public class SettingsActivity extends Activity {
             long now = System.nanoTime();
             float dt = lastNanos == 0 ? 1 / 60f : Math.min(0.05f, (now - lastNanos) / 1e9f);
             lastNanos = now;
+            boolean lit = screen != MAIN || !(inSide || onCorner);
             for (int i = 0; i < pop.length; i++) {
-                pop[i].target = i == focus && i < rowCount() ? 1 : 0;
+                pop[i].target = lit && i == focus && i < rowCount() ? 1 : 0;
                 pop[i].step(dt);
             }
             long up = SystemClock.uptimeMillis();
@@ -495,113 +498,348 @@ public class SettingsActivity extends Activity {
             else drawList(c);
         }
 
-        private static final String[] MAIN_ICONS = {"live_tv", "sparkles", "settings", "apps", "tv", "gamepad", "bedtime", "tv_settings", "sync"};
+        // MARK: - The main page: the categories on the left, the open one's settings on the right
 
-        private String[] mainLabels() {
-            return new String[] {Ui.tr("Home Screen"), Ui.tr("Screensaver"), Ui.tr("Home Settings"), Ui.tr("Shelf"),
-                    Ui.tr("Top Buttons"), Ui.tr("Remote Buttons"), Ui.tr("Sleep Timer"), Ui.tr("TV Settings"), Ui.tr("Update")};
+        /** The settings' cards: 0-8, then the screensaver's "Turn the screen off". */
+        private static final int SCREEN_OFF_ITEM = 9;
+        private static final int CAT_HOME = 0, CAT_SAVER = 1, CAT_REMOTE = 2, CAT_WIFI = 3, CAT_TV = 4, CATS = 5;
+        /** Each category's cards (Wi-Fi has a page of its own: the networks). */
+        private static final int[][] CAT_ITEMS = {{0, 2, 3, 4}, {1, SCREEN_OFF_ITEM}, {5, 6}, {}, {7, UPDATE_ROW}};
+        private static final String[] CAT_ICONS = {"home", "sparkles", "gamepad", null, "tv_settings"};   // null: the Wi-Fi sign
+        private static final String[] ITEM_ICONS = {"live_tv", "play", "settings", "apps", "tv", "gamepad", "bedtime",
+                "tv_settings", "sync", "bedtime"};
+        private static final float SIDE_TOP = 196, SIDE_ROW = 72, CARDS_TOP = 196, WIFI_LIST_TOP = 372;
+        /** Wi-Fi page: the list's rows on screen at once (a longer list scrolls). */
+        private static final int WIFI_VISIBLE = 7;
+
+        /**
+         * The category open on the main page (it follows the focus on the left), whether the focus is on the categories
+         * or on the Wi-Fi sign at the top right (which opens Wi-Fi), and the first Wi-Fi list row shown.
+         */
+        private int category;
+        private boolean inSide = true, onCorner;
+        private int wifiScroll;
+        private final RectF cardBox = new RectF(), sideBox = new RectF();
+
+        private static String catName(int cat) {
+            switch (cat) {
+                case CAT_HOME: return Ui.tr("Home Screen");
+                case CAT_SAVER: return Ui.tr("Screensaver");
+                case CAT_REMOTE: return Ui.tr("Remote and Sleep");
+                case CAT_WIFI: return "Wi-Fi";
+                default: return Ui.tr("TV and Updates");
+            }
         }
 
-        /** Card `i` of the main page, in pixels. */
-        private RectF cardRect(int i) {
-            float y = 176, colW = (CONTENT_R - CONTENT_L - COL_GAP) / 2;
-            for (int r = 0; r < GRID.length; r++) {
-                for (int col = 0; col < GRID[r].length; col++) {
-                    if (GRID[r][col] == i) {
-                        float x = CONTENT_L + col * (colW + COL_GAP), right = GRID[r].length == 1 ? CONTENT_R : x + colW;
-                        cardBox.set(x * k, y * k, right * k, (y + CARD_H) * k);
-                        return cardBox;
-                    }
-                }
-                y += CARD_H + (r == 2 || r == 3 ? 56 : 16);   // a group title after the third and fourth rows
+        private static String catAbout(int cat) {
+            switch (cat) {
+                case CAT_HOME: return Ui.tr("FrontEndTV, the apps and the buttons of the home screen");
+                case CAT_SAVER: return Ui.tr("What the TV does while nobody uses it");
+                case CAT_REMOTE: return Ui.tr("The remote's buttons and the sleep timer");
+                case CAT_WIFI: return Ui.tr("The network the TV is on, and the ones around it");
+                default: return Ui.tr("The TV's own settings and FrontEndTV's new versions");
             }
-            cardBox.setEmpty();
+        }
+
+        private static String itemLabel(int item) {
+            switch (item) {
+                case 0: return Ui.tr("Home Screen");
+                case 1: return Ui.tr("Screensaver Preview");
+                case 2: return Ui.tr("Home Settings");
+                case 3: return Ui.tr("Shelf");
+                case 4: return Ui.tr("Top Buttons");
+                case 5: return Ui.tr("Remote Buttons");
+                case 6: return Ui.tr("Sleep Timer");
+                case 7: return Ui.tr("TV Settings");
+                case UPDATE_ROW: return Ui.tr("Update");
+                default: return Ui.tr("Turn the Screen Off");
+            }
+        }
+
+        private static String itemAbout(int item) {
+            switch (item) {
+                case 0: return Ui.tr("FrontEndTV or the TV's original home screen");
+                case 1: return Ui.tr("See it now, as when the TV rests");
+                case 2: return Ui.tr("Language, weather, city, photos and widgets");
+                case 3: return Ui.tr("The apps in the bar at the bottom");
+                case 4: return Ui.tr("The TV, HDMI and settings buttons at the top");
+                case 5: return Ui.tr("What the remote's buttons open");
+                case 6: return Ui.tr("Turns the TV off after a while");
+                case 7: return Ui.tr("Network, picture, sound and the rest of the TV");
+                case UPDATE_ROW: return Ui.tr("Looked for every 30 minutes");
+                default: return Ui.tr("Puts the TV to sleep instead of leaving the screensaver on");
+            }
+        }
+
+        /** "Turn the Screen Off"'s value: never, right away, or after that many minutes of screensaver. */
+        private static String screenOffName(int minutes) {
+            return minutes < 0 ? Ui.tr("Never") : minutes == 0 ? Ui.tr("Right away")
+                    : Ui.trf("After {time}", "time", SleepTimer.duration(minutes));
+        }
+
+        /** The card at row `i` of the open category; -1 if none. */
+        private int itemAt(int i) {
+            int[] items = CAT_ITEMS[category];
+            return i >= 0 && i < items.length ? items[i] : -1;
+        }
+
+        /** Back on the main page, focus on `item`'s card. */
+        private void showItem(int item) {
+            for (int cat = 0; cat < CATS; cat++) {
+                for (int i = 0; i < CAT_ITEMS[cat].length; i++) {
+                    if (CAT_ITEMS[cat][i] != item) continue;
+                    category = cat;
+                    focus = i;
+                }
+            }
+            inSide = onCorner = false;
+            pickScroll = 0;
+            screen = MAIN;
+        }
+
+        /** The main page's rows: the categories (focus on the left), or the open one's cards, or Wi-Fi's status and list. */
+        private int mainRows() {
+            if (inSide) return CATS;
+            if (category == CAT_WIFI) return 1 + Math.min(WIFI_VISIBLE, wifiList());
+            return CAT_ITEMS[category].length;
+        }
+
+        /** The Wi-Fi list: the networks around (none without ADB), then "More Wi-Fi Settings". */
+        private static int wifiList() {
+            return Wifi.networks.size() + 1;
+        }
+
+        /** The network at list row `at`; null for "More Wi-Fi Settings". */
+        private static Wifi.Network wifiNetwork(int at) {
+            List<Wifi.Network> n = Wifi.networks;
+            return at >= 0 && at < n.size() ? n.get(at) : null;
+        }
+
+        /** Card `i` of the open category (on Wi-Fi, its status), in pixels. */
+        private RectF cardRect(int i) {
+            float y = CARDS_TOP + i * (CARD_H + 16);
+            cardBox.set(CONTENT_L * k, y * k, CONTENT_R * k, (y + CARD_H) * k);
             return cardBox;
         }
 
-        private final RectF cardBox = new RectF();
+        /** Wi-Fi row `i` (1 and on: the list), in pixels. */
+        private RectF wifiRowRect(int i) {
+            float y = WIFI_LIST_TOP + (i - 1) * (LIST_ROW_H + LIST_ROW_GAP);
+            cardBox.set(CONTENT_L * k, y * k, CONTENT_R * k, (y + LIST_ROW_H) * k);
+            return cardBox;
+        }
 
-        /** The main page: its title, then the cards in three groups and "About". */
+        /** The sidebar's row for category `cat`, in pixels. */
+        private RectF sideRect(int cat) {
+            float y = SIDE_TOP + cat * (SIDE_ROW + 8);
+            sideBox.set(28 * k, y * k, (SIDE_W - 28) * k, (y + SIDE_ROW) * k);
+            return sideBox;
+        }
+
+        private RectF mainBox(int row) {
+            return inSide ? sideRect(row) : category == CAT_WIFI && row > 0 ? wifiRowRect(row) : cardRect(row);
+        }
+
+        /** The main page's arrows: up and down in the categories or the cards; right goes in, left back out to the categories. */
+        private void mainMove(int rows, int cols) {
+            if (onCorner) {
+                if (rows > 0 || cols < 0) onCorner = false;
+                return;
+            }
+            if (inSide) {
+                if (cols > 0) {
+                    enterCategory();
+                } else if (rows < 0 && category == 0) {
+                    onCorner = true;
+                } else if (rows != 0) {
+                    int next = Math.max(0, Math.min(CATS - 1, category + rows));
+                    if (next == category) return;
+                    category = focus = next;
+                    wifiScroll = 0;
+                    if (category == CAT_WIFI) Wifi.refreshIfStale(getContext());
+                }
+                return;
+            }
+            if (cols < 0) {
+                inSide = true;
+                focus = category;
+                return;
+            }
+            if (cols > 0) return;
+            if (rows < 0 && focus == 0) {
+                onCorner = true;
+                return;
+            }
+            if (category == CAT_WIFI && focus >= 1) {
+                int visible = mainRows() - 1;
+                if (rows > 0 && focus == visible && wifiScroll + visible < wifiList()) wifiScroll++;
+                else if (rows < 0 && focus == 1 && wifiScroll > 0) wifiScroll--;
+                else focus = Math.max(0, Math.min(visible, focus + rows));
+                return;
+            }
+            focus = Math.max(0, Math.min(mainRows() - 1, focus + rows));
+        }
+
+        private void enterCategory() {
+            inSide = onCorner = false;
+            focus = 0;
+            wifiScroll = 0;
+            if (category == CAT_WIFI) Wifi.refreshIfStale(getContext());
+        }
+
+        /** OK on the main page; true when the page changed (the focus springs start again). */
+        private boolean activateMain() {
+            Context c = getContext();
+            if (onCorner) {
+                category = CAT_WIFI;
+                enterCategory();
+                return true;
+            }
+            if (inSide) {
+                enterCategory();
+                return true;
+            }
+            if (category == CAT_WIFI) {
+                activateWifi();
+                return false;
+            }
+            switch (itemAt(focus)) {
+                case 0:
+                    if (busy()) return false;
+                    screen = HOME_CHOICE;
+                    focus = freeActive() ? 0 : 1;
+                    return true;
+                case 1:
+                    pause();
+                    activity.showPreview();
+                    return true;
+                case 2:
+                    screen = HOME_SETTINGS;
+                    focus = 0;
+                    pickScroll = 0;
+                    return true;
+                case 3:
+                    openShelfEditor(false);
+                    return true;
+                case 4:
+                    openShelfEditor(true);
+                    return true;
+                case 5:
+                    HomeMode.ensureRemoteService(c, 0);   // the buttons work from inside other apps through this service
+                    loadApps();
+                    screen = REMOTE_KEYS;
+                    focus = 0;
+                    return true;
+                case 6:
+                    pickScroll = 0;
+                    screen = POWER;
+                    focus = 0;
+                    return true;
+                case UPDATE_ROW:
+                    Updater.activate(c);
+                    return false;
+                case SCREEN_OFF_ITEM: {
+                    List<String[]> list = new ArrayList<>();
+                    for (int m : new int[] {-1, 0, 5, 10, 15, 30, 60}) list.add(new String[] {String.valueOf(m), screenOffName(m)});
+                    openChoices(PICK_SCREEN_OFF, list, String.valueOf(Prefs.screenOff()));
+                    return true;
+                }
+                default:
+                    activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    return true;
+            }
+        }
+
+        /** The main page: the open category's name and what it holds, then its cards (or the Wi-Fi page). */
         private void drawMain(Canvas c, float seconds) {
-            c.drawText(Ui.tr("Home"), CONTENT_L * k, 112 * k, pageTitle);
-            c.drawText(Ui.tr("Manage the settings of your FrontEndTV"), CONTENT_L * k, 154 * k, pageSub);
+            c.drawText(catName(category), CONTENT_L * k, 112 * k, pageTitle);
+            c.drawText(catAbout(category), CONTENT_L * k, 154 * k, pageSub);
+            if (category == CAT_WIFI) {
+                drawWifiPage(c, seconds);
+                return;
+            }
             boolean working = busy();
             String busyText = busyText(), error = state.optString("error");
-            String[] labels = mainLabels();
-            String[] about = {Ui.tr("FrontEndTV or the TV's original home screen"), Ui.tr("Photos and the time while the TV rests"),
-                    Ui.tr("Language, weather, city, photos and widgets"), Ui.tr("The apps in the bar at the bottom"),
-                    Ui.tr("The TV, HDMI and settings buttons at the top"), Ui.tr("What the remote's buttons open"),
-                    Ui.tr("Turns the TV off after a while"), Ui.tr("Network, picture, sound and the rest of the TV"),
-                    Ui.tr("Looked for every 30 minutes")};
-            // What's going on, in the card it concerns (amber): the switch's step to do on the TV or its error, a new version
-            String[] notes = new String[labels.length];
-            if (working && busyText.equals(Ui.tr("Accept “Allow USB debugging?” on the TV (tick “Always allow”)."))) {
-                notes[0] = Ui.tr("On the TV: tick “Always allow” and press OK.");
-            } else if (!working && !error.isEmpty()) {
-                notes[0] = error;
-            }
             int st = Updater.state();
-            if (st == Updater.AVAILABLE) notes[UPDATE_ROW] = Ui.tr("Press OK to install it.");
-            else if (st == Updater.FAILED) notes[UPDATE_ROW] = Updater.label();
-            // The values some cards show before their arrow
-            String[] values = new String[labels.length];
-            values[0] = working ? (busyText.isEmpty() ? Ui.tr("Starting…") : busyText) : freeActive() ? "FrontEndTV" : Ui.tr("Original");
-            values[1] = Ui.tr("Preview");
-            if (st != Updater.IDLE && st != Updater.FAILED) values[UPDATE_ROW] = Updater.label();
+            int[] items = CAT_ITEMS[category];
+            for (int i = 0; i < items.length; i++) {
+                int item = items[i];
+                // What's going on, in the card it concerns (amber): the switch's step to do on the TV or its error, a new version
+                String note = null;
+                if (item == 0 && working && busyText.equals(Ui.tr("Accept “Allow USB debugging?” on the TV (tick “Always allow”)."))) {
+                    note = Ui.tr("On the TV: tick “Always allow” and press OK.");
+                } else if (item == 0 && !working && !error.isEmpty()) {
+                    note = error;
+                } else if (item == UPDATE_ROW && st == Updater.AVAILABLE) {
+                    note = Ui.tr("Press OK to install it.");
+                } else if (item == UPDATE_ROW && st == Updater.FAILED) {
+                    note = Updater.label();
+                }
+                // The value some cards show before their arrow
+                String value = null;
+                if (item == 0) {
+                    value = working ? (busyText.isEmpty() ? Ui.tr("Starting…") : busyText) : freeActive() ? "FrontEndTV" : Ui.tr("Original");
+                } else if (item == SCREEN_OFF_ITEM) {
+                    value = screenOffName(Prefs.screenOff());
+                } else if (item == UPDATE_ROW && st != Updater.IDLE && st != Updater.FAILED) {
+                    value = Updater.label();
+                }
+                boolean spin = (item == 0 && working) || (item == UPDATE_ROW && Updater.working());
+                drawItemCard(c, cardRect(i), i, ITEM_ICONS[item], 0, itemLabel(item), itemAbout(item), value, note, spin,
+                        item == UPDATE_ROW && st == Updater.AVAILABLE, seconds);
+            }
+        }
 
-            String[] groups = {Ui.tr("REMOTE AND SLEEP"), Ui.tr("TV AND UPDATES"), Ui.tr("RECOMMENDATIONS")};
-            int[] groupBefore = {5, 7, -1};
-            for (int g = 0; g < groups.length; g++) {
-                float top = groupBefore[g] >= 0 ? cardRect(groupBefore[g]).top : aboutRect().top;
-                c.drawText(groups[g], CONTENT_L * k, top - 18 * k, header);
-            }
-            for (int i = 0; i < labels.length; i++) {
-                RectF r = new RectF(cardRect(i));
-                float f = Ui.clamp(pop[i].value);
-                boolean off = unavailable(i) != null;
-                drawCard(r, c, f);
-                Symbols.draw(getContext(), c, MAIN_ICONS[i], r.left + 58 * k, r.centerY(), 40 * k, off ? 0x59FFFFFF : 0xFFEDEFF5);
-                float x = r.left + 112 * k, right = r.right - 40 * k, w = right - 30 * k - x;
-                // Under the name: what it's for, or (amber) what's going on, on two lines at most (the name goes up)
-                String line = notes[i] != null ? notes[i] : off ? Ui.tr("Unavailable") + " · " + about[i] : about[i];
-                boolean twoLines = notes[i] != null && cardDesc.measureText(line) > w;
-                float base = r.top + (twoLines ? 38 : 48) * k;
-                // On the right: the arrow, and before it the card's value (or why it can't be used, or a spinner)
-                float valueLeft = right - 24 * k;
-                if (!off) {
-                    float cw = Symbols.width(getContext(), "chevron_right", 24 * k);
-                    Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, r.centerY(), 24 * k, 0xFFB8C0D0);
-                    if (values[i] != null) {
-                        boolean news = i == UPDATE_ROW && st == Updater.AVAILABLE;
-                        cardValue.setColor(news ? 0xFFFFD596 : 0xFFB9A6FF);
-                        String v = fit(values[i], cardValue, 330 * k);
-                        float vr = right - cw - 18 * k;
-                        c.drawText(v, vr, base, cardValue);
-                        valueLeft = vr - cardValue.measureText(v) - 24 * k;
-                        if ((i == 0 && working) || (i == UPDATE_ROW && Updater.working())) {
-                            spinner.setColor(0xFFFFFFFF);
-                            Ui.spinner(c, valueLeft + 8 * k, base - 8 * k, 11 * k, seconds * 1.3f, spinner);
-                            valueLeft -= 26 * k;
-                        } else if (news) {
-                            dot.setColor(0xFFFFC266);
-                            c.drawCircle(valueLeft + 10 * k, base - 8 * k, 6 * k, dot);
-                        }
-                    }
+        /**
+         * A card: its icon (the Wi-Fi sign with `bars` when `icon` is null), name, value and arrow, and under the name
+         * what it's for, or (amber) what's going on, on two lines at most (the name goes up). Unavailable, it says so, dimmed.
+         */
+        private void drawItemCard(Canvas c, RectF box, int row, String icon, int bars, String label, String about,
+                                  String value, String note, boolean spin, boolean news, float seconds) {
+            RectF r = new RectF(box);
+            float f = Ui.clamp(pop[row].value);
+            boolean off = unavailable(row) != null;
+            drawCard(r, c, f);
+            int ink = off ? 0x59FFFFFF : 0xFFEDEFF5;
+            if (icon != null) Symbols.draw(getContext(), c, icon, r.left + 58 * k, r.centerY(), 40 * k, ink);
+            else drawWifi(c, r.left + 58 * k, r.centerY() + 15 * k, 30 * k, bars, ink, false);
+            float x = r.left + 112 * k, right = r.right - 40 * k, w = right - 30 * k - x;
+            String line = note != null ? note : off ? Ui.tr("Unavailable") + " · " + about : about;
+            boolean twoLines = note != null && cardDesc.measureText(line) > w;
+            float base = r.top + (twoLines ? 38 : 48) * k;
+            // On the right: the arrow, and before it the value (and a spinner, or a dot for news)
+            float valueLeft = right - 24 * k;
+            if (!off) {
+                float cw = Symbols.width(getContext(), "chevron_right", 24 * k);
+                Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, r.centerY(), 24 * k, 0xFFB8C0D0);
+                valueLeft = right - cw - 18 * k;
+                if (value != null) {
+                    cardValue.setColor(news ? 0xFFFFD596 : 0xFFB9A6FF);
+                    String v = fit(value, cardValue, 560 * k);
+                    c.drawText(v, valueLeft, base, cardValue);
+                    valueLeft -= cardValue.measureText(v) + 24 * k;
                 }
-                cardTitle.setColor(off ? 0x80FFFFFF : 0xFFFFFFFF);
-                c.drawText(fit(labels[i], cardTitle, valueLeft - x), x, base, cardTitle);
-                cardDesc.setColor(notes[i] != null ? AMBER : off ? 0x66FFFFFF : 0xFF9AA3B5);
-                if (twoLines) {
-                    int n = cardDesc.breakText(line, true, w, null);
-                    int cut = line.lastIndexOf(' ', n);
-                    if (cut <= 0) cut = n;
-                    c.drawText(line.substring(0, cut), x, r.top + 66 * k, cardDesc);
-                    c.drawText(fit(line.substring(cut).trim(), cardDesc, w), x, r.top + 92 * k, cardDesc);
-                } else {
-                    c.drawText(fit(line, cardDesc, w), x, r.top + 80 * k, cardDesc);
+                if (spin) {
+                    spinner.setColor(0xFFFFFFFF);
+                    Ui.spinner(c, valueLeft + 8 * k, base - 8 * k, 11 * k, seconds * 1.3f, spinner);
+                    valueLeft -= 26 * k;
+                } else if (news) {
+                    dot.setColor(AMBER);
+                    c.drawCircle(valueLeft + 10 * k, base - 8 * k, 6 * k, dot);
                 }
             }
-            drawAbout(c);
+            cardTitle.setColor(off ? 0x80FFFFFF : 0xFFFFFFFF);
+            c.drawText(fit(label, cardTitle, valueLeft - x), x, base, cardTitle);
+            cardDesc.setColor(note != null ? AMBER : off ? 0x66FFFFFF : 0xFF9AA3B5);
+            if (twoLines) {
+                int n = cardDesc.breakText(line, true, w, null);
+                int cut = line.lastIndexOf(' ', n);
+                if (cut <= 0) cut = n;
+                c.drawText(line.substring(0, cut), x, r.top + 66 * k, cardDesc);
+                c.drawText(fit(line.substring(cut).trim(), cardDesc, w), x, r.top + 92 * k, cardDesc);
+            } else {
+                c.drawText(fit(line, cardDesc, w), x, r.top + 80 * k, cardDesc);
+            }
         }
 
         /** A card: dark glass with a thin edge; focused (f), a violet tint and a violet frame with a soft glow. */
@@ -621,61 +859,182 @@ public class SettingsActivity extends Activity {
             c.drawRoundRect(r, rad, rad, cardEdge);
         }
 
-        private RectF aboutRect() {
-            RectF last = cardRect(7);
-            aboutBox.set(CONTENT_L * k, last.bottom + 56 * k, CONTENT_R * k, last.bottom + 56 * k + CARD_H * k);
-            return aboutBox;
+        // MARK: - Wi-Fi
+
+        /** The TV is on Wi-Fi (as Android says, or as ADB read). */
+        private boolean wifiOn() {
+            return onWifi || !Wifi.current.isEmpty();
         }
 
-        private final RectF aboutBox = new RectF();
+        /** The signal of the network the TV is on: what ADB read, else what Android says (0: unknown). */
+        private int wifiRssi() {
+            return Wifi.currentRssi != 0 ? Wifi.currentRssi : rssiNow;
+        }
 
-        /** "About": the picks' status and the credit TMDB asks for (a card to read, not to open). */
-        private void drawAbout(Canvas c) {
-            RectF r = new RectF(aboutRect());
-            drawCard(r, c, 0);
-            float cx = r.left + 58 * k, cy = r.centerY();
-            dot.setColor(0xFFEDEFF5);
-            c.drawCircle(cx, cy, 18 * k, dot);
-            infoPaint.setColor(0xFF141B29);
-            c.drawText("i", cx, cy + Ui.halfCap(infoPaint), infoPaint);
-            String line;
-            String error = recs.optString("error");
-            int count = recs.optInt("count");
-            if (!hasKey) line = Ui.tr("No TMDB key: add one with the installer on your computer.");
-            else if (error.equals(Recs.NO_KNOWN_APPS)) line = Ui.tr("None of the TV's streaming apps can give picks.");
-            else if (error.equals(Recs.NO_APPS)) line = Ui.trf("TMDB has none of the TV's apps for tmdb_region={region}.", "region", Recs.region());
-            else if (!error.isEmpty()) line = Ui.trf("Error: {error}.", "error", error);
-            else if (count > 0) line = Ui.trf("On · {n} titles from the TV's apps, 3 new ones every hour.", "n", count);
-            else line = Ui.tr("Fetching titles…");
-            float x = r.left + 112 * k, w = r.right - 40 * k - x;
-            cardTitle.setColor(0xFFFFFFFF);
-            c.drawText(Ui.tr("About"), x, r.top + 38 * k, cardTitle);
-            cardDesc.setColor(0xFF9AA3B5);
-            c.drawText(fit(line, cardDesc, w), x, r.top + 67 * k, cardDesc);
-            String credit = Ui.tr("This product uses the TMDB API but is not endorsed or certified by TMDB.");
-            if (!Config.WATCHMODE_KEY.trim().isEmpty()) credit += " " + Ui.tr("Links to the titles by Watchmode.");
-            creditPaint.setColor(0xFF717A8C);
-            c.drawText(fit(credit, creditPaint, w), x, r.top + 92 * k, creditPaint);
+        /**
+         * The Wi-Fi page: the network the TV is on (OK looks again, or turns Wi-Fi on), the networks around (OK joins,
+         * asking the password), then the TV's own Wi-Fi settings. Without FrontEndTV mode (no ADB), only those.
+         */
+        private void drawWifiPage(Canvas c, float seconds) {
+            boolean adb = Capabilities.adb(getContext()), wired = online && !onWifi;
+            String name, about, value = null;
+            if (adb && Wifi.read && !Wifi.enabled) {
+                name = Ui.tr("Wi-Fi is off");
+                about = Ui.tr("OK turns it on.");
+            } else if (wifiOn()) {
+                name = Wifi.current.isEmpty() ? Ui.tr("Connected to Wi-Fi") : Wifi.current;
+                about = Ui.tr("The TV is on this network. OK looks for networks again.");
+                value = Ui.tr("Connected");
+            } else if (wired) {
+                name = Ui.tr("Network cable");
+                about = Ui.tr("The TV is on the Internet through its cable.");
+                value = Ui.tr("Connected");
+            } else {
+                name = Ui.tr("Not connected");
+                about = Ui.tr("Pick a network below.");
+            }
+            String note = Wifi.message.isEmpty() ? null : Wifi.message;
+            int bars = wifiOn() ? Wifi.level(wifiRssi()) : 0;
+            drawItemCard(c, cardRect(0), 0, null, bars, name, about, value, note, Wifi.scanning || Wifi.connecting, false, seconds);
+
+            c.drawText(Ui.tr("NETWORKS AROUND"), CONTENT_L * k, (WIFI_LIST_TOP - 22) * k, header);
+            List<Wifi.Network> nets = Wifi.networks;
+            int rows = mainRows() - 1;
+            if (inSide) rows = Math.min(WIFI_VISIBLE, wifiList());
+            for (int i = 1; i <= rows; i++) {
+                int at = wifiScroll + i - 1;
+                rowRect.set(wifiRowRect(i));
+                float f = drawRowBackground(c, i);
+                Wifi.Network n = at < nets.size() ? nets.get(at) : null;
+                rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
+                float base = rowRect.centerY() + Ui.halfCap(rowLabel), right = rowRect.right - 30 * k;
+                if (n == null) {   // the TV's own Wi-Fi settings
+                    Symbols.draw(getContext(), c, "settings", rowRect.left + 48 * k, rowRect.centerY(), 30 * k, 0xFFEDEFF5);
+                    c.drawText(Ui.tr("More Wi-Fi Settings"), rowRect.left + 96 * k, base, rowLabel);
+                    float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
+                    Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, 0xFFB8C0D0);
+                    continue;
+                }
+                drawWifi(c, rowRect.left + 48 * k, rowRect.centerY() + 11 * k, 22 * k, Wifi.level(n.rssi), 0xFFEDEFF5, false);
+                rowValue.setColor(0xB3FFFFFF);
+                if (n.ssid.equals(Wifi.current)) {
+                    float cw = Symbols.width(getContext(), "check", 26 * k);
+                    Symbols.draw(getContext(), c, "check", right - cw / 2, rowRect.centerY(), 26 * k, 0xFFFFFFFF);
+                    right -= cw + 16 * k;
+                    c.drawText(Ui.tr("Connected"), right, base, rowValue);
+                    right -= rowValue.measureText(Ui.tr("Connected")) + 24 * k;
+                } else if (!n.open()) {
+                    drawLock(c, right - 10 * k, rowRect.centerY(), 0xB3FFFFFF);
+                    right -= 44 * k;
+                }
+                c.drawText(fit(n.ssid, rowLabel, right - rowRect.left - 120 * k), rowRect.left + 96 * k, base, rowLabel);
+            }
+            // Under the list: where it stands, and how to join where this TV can't from here
+            Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
+            float hy = (WIFI_LIST_TOP + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            String say = !adb ? Ui.tr("To see and join networks here, turn on FrontEndTV mode in Home Screen.")
+                    : !Wifi.read ? Ui.tr("Looking for networks…")
+                    : Wifi.enabled && nets.isEmpty() ? Ui.tr("No network found.")
+                    : !Wifi.JOINABLE ? Ui.tr("On this TV, networks are joined in its own Wi-Fi settings.")
+                    : wifiList() > WIFI_VISIBLE ? (wifiScroll + Math.max(focus, 1)) + " / " + wifiList() + "  ·  " + Ui.tr("OK joins the network: type its password with the remote.")
+                    : Ui.tr("OK joins the network: type its password with the remote.");
+            c.drawText(say, CONTENT_L * k + 30 * k, hy, hint);
+        }
+
+        /** A padlock (a secured network), centered on (cx, cy). */
+        private void drawLock(Canvas c, float cx, float cy, int color) {
+            wifi.setColor(color);
+            wifi.setStyle(Paint.Style.FILL);
+            tmp.set(cx - 10 * k, cy - 3 * k, cx + 10 * k, cy + 12 * k);
+            c.drawRoundRect(tmp, 3 * k, 3 * k, wifi);
+            wifi.setStyle(Paint.Style.STROKE);
+            wifi.setStrokeWidth(2.6f * k);
+            tmp.set(cx - 6.5f * k, cy - 14 * k, cx + 6.5f * k, cy - 1 * k);
+            c.drawArc(tmp, 180, 180, false, wifi);
+            c.drawLine(cx - 6.5f * k, cy - 7.5f * k, cx - 6.5f * k, cy - 3 * k, wifi);
+            c.drawLine(cx + 6.5f * k, cy - 7.5f * k, cx + 6.5f * k, cy - 3 * k, wifi);
+        }
+
+        /** OK on the Wi-Fi page. */
+        private void activateWifi() {
+            Context c = getContext();
+            if (focus == 0) {
+                if (!Capabilities.adb(c)) openWifiSettings();
+                else if (Wifi.read && !Wifi.enabled) Wifi.enable(c);
+                else Wifi.refresh(c);
+                return;
+            }
+            Wifi.Network n = wifiNetwork(wifiScroll + focus - 1);
+            if (n == null) {
+                openWifiSettings();
+            } else if (n.ssid.equals(Wifi.current)) {
+                Toast.makeText(c, Ui.tr("The TV is already on this network."), Toast.LENGTH_SHORT).show();
+            } else if (!n.joinable()) {
+                openWifiSettings();
+            } else if (n.open()) {
+                join(n, "");
+            } else {
+                askWifiPassword(n);
+            }
+        }
+
+        private void openWifiSettings() {
+            try {
+                activity.startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (android.content.ActivityNotFoundException e) {
+                activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
+        }
+
+        /** The network's password, typed with the TV's keyboard. */
+        private void askWifiPassword(Wifi.Network n) {
+            EditText field = new EditText(activity);
+            field.setSingleLine(true);
+            field.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            field.setHint(Ui.tr("Password"));
+            field.setImeOptions(EditorInfo.IME_ACTION_DONE);
+            AlertDialog dialog = new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(n.ssid)
+                    .setView(field)
+                    .setPositiveButton(Ui.tr("Connect"), (d, which) -> join(n, field.getText().toString()))
+                    .setNegativeButton(Ui.tr("Cancel"), null)
+                    .create();
+            field.setOnEditorActionListener((v, action, event) -> {
+                dialog.dismiss();
+                join(n, field.getText().toString());
+                return true;
+            });
+            dialog.show();
+        }
+
+        /** Joins `n`; the status card at the top says how it goes. */
+        private void join(Wifi.Network n, String password) {
+            if (!n.open() && password.isEmpty()) return;
+            Wifi.connect(getContext(), n, password);
+            focus = 0;
+            wifiScroll = 0;
+            invalidate();
+            spoken.focusMoved();
         }
 
         // MARK: - Sidebar and clock
 
-        /** The sidebar's rows: -1 the main page ("Home"), 0-8 the settings, -2 "About"; a negative row under 100 is a group title. */
-        private static final int[] SIDE = {-1, 0, 1, 2, 3, 4, -100, 5, 6, -101, 7, 8, -102, -2};
-
-        /** The sidebar row of the page open now. */
+        /** The sidebar's category of the page open now. */
         private int sideCurrent() {
             switch (screen) {
-                case HOME_CHOICE: return 0;
-                case HOME_SETTINGS: return 2;
-                case SHELF_EDIT: return editingTop ? 4 : 3;
-                case REMOTE_KEYS: return 5;
-                case POWER: return 6;
-                case PICKER: return pickFor == PICK_CITY || pickFor == PICK_LANGUAGE ? 2 : pickFor <= PICK_SLEEP ? 6 : 5;
-                default: return -1;
+                case MAIN: return category;
+                case REMOTE_KEYS:
+                case POWER: return CAT_REMOTE;
+                case PICKER:
+                    return pickFor == PICK_SCREEN_OFF ? CAT_SAVER : pickFor == PICK_CITY || pickFor == PICK_LANGUAGE ? CAT_HOME : CAT_REMOTE;
+                default: return CAT_HOME;
             }
         }
 
+        /**
+         * The sidebar: logo, name and version, then the categories, the open one highlighted (bright violet while the
+         * focus is there, softer once it's in the page), and at the bottom TMDB's credit where its picks are on.
+         */
         private void drawSidebar(Canvas c) {
             side.setColor(0xFF0B101A);
             c.drawRect(0, 0, SIDE_W * k, h, side);
@@ -693,49 +1052,47 @@ public class SettingsActivity extends Activity {
             c.drawText("TV", 162 * k + sideBrand.measureText("FrontEnd") + 1 * k, 96 * k, sideBrand);
             c.drawText(versionName(getContext()), 162 * k, 130 * k, sideVersion);
 
-            String[] labels = mainLabels();
-            String[] groups = {Ui.tr("REMOTE AND SLEEP"), Ui.tr("TV AND UPDATES"), Ui.tr("RECOMMENDATIONS")};
-            int current = sideCurrent(), hover = screen == MAIN ? focus : -99;
-            float y = 186 * k;
-            for (int item : SIDE) {
-                if (item <= -100) {   // a line, then the group's title
-                    side.setColor(0xFF1C2432);
-                    c.drawRect(44 * k, y + 14 * k, (SIDE_W - 44) * k, y + 15.5f * k, side);
-                    c.drawText(groups[-100 - item], 52 * k, y + 50 * k, sideHeader);
-                    y += 68 * k;
-                    continue;
-                }
-                float rowH = item == -1 ? 66 * k : 56 * k, cy = y + rowH / 2;
-                boolean on = item == current;
-                if (on) {
-                    tmp.set(30 * k, y + 2 * k, (SIDE_W - 30) * k, y + rowH - 2 * k);
-                    pill.setShader(new android.graphics.LinearGradient(tmp.left, 0, tmp.right, 0, 0xFF5B44E0, 0xFF6E4FF0,
+            int current = sideCurrent();
+            boolean live = screen == MAIN && inSide && !onCorner;
+            for (int cat = 0; cat < CATS; cat++) {
+                RectF r = new RectF(sideRect(cat));
+                float cy = r.centerY();
+                boolean on = cat == current;
+                if (on && live) {
+                    shadow.setColor(0x667B5CFF);
+                    c.drawRoundRect(r, 16 * k, 16 * k, shadow);
+                    pill.setShader(new android.graphics.LinearGradient(r.left, 0, r.right, 0, 0xFF5B44E0, 0xFF7A52F2,
                             android.graphics.Shader.TileMode.CLAMP));
-                    pill.setAlpha(255);
-                    c.drawRoundRect(tmp, 14 * k, 14 * k, pill);
-                } else if (item == hover) {   // the card focused on the main page: a violet mark beside its row
-                    tmp.set(30 * k, cy - 14 * k, 35 * k, cy + 14 * k);
+                    c.drawRoundRect(r, 16 * k, 16 * k, pill);
+                } else if (on) {
+                    card.setColor(0xFF1D1A3A);
+                    c.drawRoundRect(r, 16 * k, 16 * k, card);
+                    tmp.set(r.left, cy - 18 * k, r.left + 5 * k, cy + 18 * k);
                     dot.setColor(0xFF8B6CFF);
                     c.drawRoundRect(tmp, 2.5f * k, 2.5f * k, dot);
                 }
-                String name = item == -1 ? Ui.tr("Home") : item == -2 ? Ui.tr("About") : labels[item];
-                if (item == 5 && sideItem.measureText(name) > (SIDE_W - 160) * k) name = Ui.tr("Remote control");
-                String icon = item == -1 ? "home" : item == -2 ? null : MAIN_ICONS[item];
-                int ink = on || item == hover ? 0xFFFFFFFF : 0xFFC9CFDB;
-                if (icon != null) Symbols.draw(getContext(), c, icon, 82 * k, cy, 30 * k, ink);
-                else {   // "About": an i in a circle
-                    dot.setColor(ink);
-                    c.drawCircle(82 * k, cy, 14 * k, dot);
-                    infoSmall.setColor(0xFF0B101A);
-                    c.drawText("i", 82 * k, cy + Ui.halfCap(infoSmall), infoSmall);
-                }
+                int ink = on ? 0xFFFFFFFF : 0xFFAEB5C4;
+                if (CAT_ICONS[cat] != null) Symbols.draw(getContext(), c, CAT_ICONS[cat], 80 * k, cy, 32 * k, ink);
+                else drawWifi(c, 80 * k, cy + 12 * k, 24 * k, wifiOn() ? Wifi.level(wifiRssi()) : online ? 4 : 0, ink, !online);
                 sideItem.setColor(ink);
-                c.drawText(fit(name, sideItem, (SIDE_W - 160) * k), 132 * k, cy + Ui.halfCap(sideItem), sideItem);
-                y += rowH + (item == -1 ? 6 * k : 0);
+                c.drawText(fit(catName(cat), sideItem, (SIDE_W - 168) * k), 128 * k, cy + Ui.halfCap(sideItem), sideItem);
+                if (cat == CAT_TV && Updater.state() == Updater.AVAILABLE) {   // a new version: a dot, as on its card
+                    dot.setColor(AMBER);
+                    c.drawCircle(r.right - 26 * k, cy, 7 * k, dot);
+                }
+            }
+            if (hasKey) {   // TMDB asks for its credit where its picks show
+                String credit = Ui.tr("This product uses the TMDB API but is not endorsed or certified by TMDB.");
+                float w = (SIDE_W - 88) * k;
+                int n = creditPaint.breakText(credit, true, w, null);
+                int cut = n >= credit.length() ? n : Math.max(1, credit.lastIndexOf(' ', n));
+                c.drawText(credit.substring(0, cut), 44 * k, h - 66 * k, creditPaint);
+                c.drawText(fit(credit.substring(cut).trim(), creditPaint, w), 44 * k, h - 40 * k, creditPaint);
             }
         }
 
         private boolean onWifi = true, online = true;
+        private int rssiNow;
 
         /** The network (read with the state, every couple of seconds). */
         private void readNetwork() {
@@ -744,12 +1101,14 @@ public class SettingsActivity extends Activity {
                 android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
                 online = nc != null;
                 onWifi = nc != null && nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI);
+                int s = onWifi && android.os.Build.VERSION.SDK_INT >= 29 ? nc.getSignalStrength() : Integer.MIN_VALUE;
+                rssiNow = s == Integer.MIN_VALUE ? 0 : s;
             } catch (RuntimeException e) {
                 online = onWifi = false;
             }
         }
 
-        /** Top right: the Wi-Fi (crossed out without a network), the time and the date. */
+        /** Top right: the Wi-Fi sign (its bars; crossed out without a network; OK on it opens Wi-Fi), the time and the date. */
         private void drawClockCorner(Canvas c) {
             long now = System.currentTimeMillis();
             String time = Ui.clock(now);
@@ -757,24 +1116,38 @@ public class SettingsActivity extends Activity {
             float right = CONTENT_R * k;
             c.drawText(time, right, 92 * k, cornerTime);
             c.drawText(date, right, 122 * k, cornerDate);
-            float left = right - Math.max(cornerTime.measureText(time), cornerDate.measureText(date)) - 34 * k;
-            if (onWifi || !online) drawWifi(c, left - 22 * k, 92 * k, 22 * k, online ? 0xFFFFFFFF : 0x66FFFFFF, !online);
+            float cx = right - Math.max(cornerTime.measureText(time), cornerDate.measureText(date)) - 64 * k, by = 104 * k;
+            if (onCorner) {
+                float cy = by - 12 * k;
+                shadow.setColor(0x667B5CFF);
+                c.drawCircle(cx, cy, 40 * k, shadow);
+                card.setColor(0xFF221F52);
+                c.drawCircle(cx, cy, 38 * k, card);
+                cardEdge.setStyle(Paint.Style.STROKE);
+                cardEdge.setStrokeWidth(3 * k);
+                cardEdge.setColor(0xFF7B61FF);
+                c.drawCircle(cx, cy, 38 * k, cardEdge);
+            }
+            int bars = wifiOn() ? Wifi.level(wifiRssi()) : online ? 4 : 0;
+            drawWifi(c, cx, by, 26 * k, bars, online && !wifiOn() ? 0x80FFFFFF : 0xFFFFFFFF, !online);
         }
 
-        /** The Wi-Fi sign: three arcs over a dot, `r` its radius, (cx, by) the dot. */
-        private void drawWifi(Canvas c, float cx, float by, float r, int color, boolean crossed) {
-            wifi.setColor(color);
+        /** The Wi-Fi sign: three arcs over a dot, `r` its radius, (cx, by) the dot; the bars beyond `bars` (0-4) faint. */
+        private void drawWifi(Canvas c, float cx, float by, float r, int bars, int color, boolean crossed) {
             wifi.setStyle(Paint.Style.STROKE);
             wifi.setStrokeCap(Paint.Cap.ROUND);
             wifi.setStrokeWidth(r * 0.17f);
             for (int i = 1; i <= 3; i++) {
+                wifi.setColor(i < bars ? color : Ui.alpha(color, 0.22f));
                 float rr = r * (0.33f * i + 0.05f);
                 tmp.set(cx - rr, by - rr, cx + rr, by + rr);
                 c.drawArc(tmp, -135, 90, false, wifi);
             }
+            wifi.setColor(bars >= 1 ? color : Ui.alpha(color, 0.22f));
             wifi.setStyle(Paint.Style.FILL);
             c.drawCircle(cx, by, r * 0.12f, wifi);
             if (crossed) {
+                wifi.setColor(color);
                 wifi.setStyle(Paint.Style.STROKE);
                 c.drawLine(cx - r, by - r * 1.15f, cx + r, by + r * 0.1f, wifi);
             }
@@ -917,21 +1290,6 @@ public class SettingsActivity extends Activity {
             }
         }
 
-        /** The main page's arrows: up and down change row (same column, or the row's only card), left and right column. */
-        private static int gridMove(int from, int rows, int cols) {
-            int r = 0, col = 0;
-            for (int i = 0; i < GRID.length; i++) {
-                for (int j = 0; j < GRID[i].length; j++) if (GRID[i][j] == from) { r = i; col = j; }
-            }
-            if (cols != 0) {
-                int j = col + cols;
-                return j >= 0 && j < GRID[r].length ? GRID[r][j] : from;
-            }
-            int to = r + rows;
-            if (to < 0 || to >= GRID.length) return from;
-            return GRID[to][Math.min(col, GRID[to].length - 1)];
-        }
-
         boolean onKey(KeyEvent e) {
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
             if (learning) {
@@ -946,7 +1304,7 @@ public class SettingsActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_UP:
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     if (screen == MAIN) {
-                        if (down) focus = gridMove(focus, e.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1, 0);
+                        if (down) mainMove(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1, 0);
                         invalidate();
                         spoken.focusMoved();
                         return true;
@@ -966,7 +1324,7 @@ public class SettingsActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                     if (screen == MAIN) {
-                        if (down) focus = gridMove(focus, 0, e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
+                        if (down) mainMove(0, e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
                         spoken.focusMoved();
                         return true;
@@ -993,12 +1351,18 @@ public class SettingsActivity extends Activity {
                     }
                     return true;
                 case KeyEvent.KEYCODE_BACK:
-                    if (screen == MAIN) return false;   // leaves the settings
+                    if (screen == MAIN && inSide && !onCorner) return false;   // leaves the settings
                     if (down) {
                         if (e.getRepeatCount() == 0) backDown = true;
                     } else {
                         if (backDown && !e.isCanceled()) {
-                            if (screen == PICKER && pickFor <= PICK_SLEEP) {
+                            if (screen == MAIN) {   // from the cards (or the Wi-Fi sign) to the categories
+                                if (!onCorner) inSide = true;
+                                onCorner = false;
+                                focus = inSide ? category : focus;
+                            } else if (screen == PICKER && pickFor == PICK_SCREEN_OFF) {
+                                showItem(SCREEN_OFF_ITEM);
+                            } else if (screen == PICKER && pickFor <= PICK_SLEEP) {
                                 focus = powerFocus(pickFor == PICK_SLEEP ? P_SLEEP : P_WHERE);
                                 pickScroll = 0;   // the picker's scroll isn't this short list's
                                 screen = POWER;
@@ -1010,9 +1374,8 @@ public class SettingsActivity extends Activity {
                                 focus = pickFor - 1;
                                 screen = REMOTE_KEYS;
                             } else {
-                                focus = screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? (editingTop ? 4 : 3)
-                                        : screen == REMOTE_KEYS ? 5 : screen == POWER ? 6 : 0;
-                                screen = MAIN;
+                                showItem(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? (editingTop ? 4 : 3)
+                                        : screen == REMOTE_KEYS ? 5 : screen == POWER ? 6 : 0);
                             }
                         }
                         backDown = false;
@@ -1090,8 +1453,11 @@ public class SettingsActivity extends Activity {
          */
         private String need(int i) {
             switch (screen) {
-                case MAIN:
-                    return i == 5 ? Capabilities.NEED_REMOTE_BUTTONS : i == 6 ? Capabilities.NEED_ADB : null;
+                case MAIN: {
+                    if (inSide || category == CAT_WIFI) return null;
+                    int item = itemAt(i);
+                    return item == 5 ? Capabilities.NEED_REMOTE_BUTTONS : item == 6 || item == SCREEN_OFF_ITEM ? Capabilities.NEED_ADB : null;
+                }
                 case POWER: {
                     int id = powerRows()[i];
                     return id == P_WHERE ? Capabilities.NEED_OVERLAY : null;
@@ -1109,9 +1475,10 @@ public class SettingsActivity extends Activity {
         private String unavailable(int i) {
             int n = rowCount();
             if (i < 0 || i >= n) return null;
-            if (whyRows == null || whyRows.length != n || whyScreen != screen || whyScroll != pickScroll) {
+            int key = screen != MAIN ? screen : inSide ? -1 : -2 - category;   // the main page: each category its own
+            if (whyRows == null || whyRows.length != n || whyScreen != key || whyScroll != pickScroll) {
                 whyRows = new String[n];
-                whyScreen = screen;
+                whyScreen = key;
                 whyScroll = pickScroll;
                 for (int r = 0; r < n; r++) {
                     String need = need(r);
@@ -1208,10 +1575,15 @@ public class SettingsActivity extends Activity {
             openPicker(which);
         }
 
-        /** OK in a Sleep Timer picker: applied, and back to its row. */
+        /** OK in a Sleep Timer picker (or Turn the Screen Off's): applied, and back to its row. */
         private void pickPower() {
             Context c = getContext();
             String[] choice = choices.get(pickScroll + focus);
+            if (pickFor == PICK_SCREEN_OFF) {
+                Prefs.setScreenOff(Integer.parseInt(choice[0]));
+                showItem(SCREEN_OFF_ITEM);
+                return;
+            }
             int row = pickFor == PICK_SLEEP ? P_SLEEP : P_WHERE;
             if (pickFor == PICK_SLEEP) {
                 SleepTimer.set(c, Integer.parseInt(choice[0]));
@@ -1584,6 +1956,7 @@ public class SettingsActivity extends Activity {
             String title = pickFor == PICK_CITY ? Ui.tr("City")
                     : pickFor == PICK_LANGUAGE ? Ui.tr("Language")
                     : pickFor == PICK_SLEEP ? Ui.tr("Sleep Timer") : pickFor == PICK_PLACE ? Ui.tr("Position")
+                    : pickFor == PICK_SCREEN_OFF ? Ui.tr("Turn the Screen Off")
                     : keyLabels()[pickFor - 1];
             c.drawText(title, CONTENT_L * k, 112 * k, pageTitle);
             int rows = rowCount();
@@ -1667,8 +2040,7 @@ public class SettingsActivity extends Activity {
                     HomeMode.request(c, wantFree ? HomeMode.FREE : HomeMode.ORIGINAL);
                     pendingAt = SystemClock.uptimeMillis();
                 }
-                screen = MAIN;
-                focus = 0;
+                showItem(0);
             } else if (screen == PICKER && pickFor == PICK_CITY) {
                 String[] city = cities.get(pickScroll + focus);
                 Prefs.setCity(city[1], city[2], city[3]);
@@ -1711,36 +2083,10 @@ public class SettingsActivity extends Activity {
                 adjust(1);
                 invalidate();
                 return;
-            } else if (focus == 0) {
-                if (busy()) return;
-                screen = HOME_CHOICE;
-                focus = freeActive() ? 0 : 1;
-            } else if (focus == 1) {
-                pause();
-                activity.showPreview();
-            } else if (focus == 2) {
-                screen = HOME_SETTINGS;
-                focus = 0;
-                pickScroll = 0;
-            } else if (focus == 3) {
-                openShelfEditor(false);
-            } else if (focus == 4) {
-                openShelfEditor(true);
-            } else if (focus == 5) {
-                HomeMode.ensureRemoteService(c, 0);   // the buttons work from inside other apps through this service
-                loadApps();
-                screen = REMOTE_KEYS;
-                focus = 0;
-            } else if (focus == 6) {
-                pickScroll = 0;
-                screen = POWER;
-                focus = 0;
-            } else if (focus == UPDATE_ROW) {
-                Updater.activate(c);
+            } else if (!activateMain()) {
                 invalidate();
+                spoken.focusMoved();
                 return;
-            } else {
-                activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }
             for (Spring s : pop) s.snap(0);
             invalidate();

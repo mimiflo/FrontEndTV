@@ -216,6 +216,14 @@ final class Prefs {
 
     static void setSleepPlace(int place) { sp().edit().putInt("sleepPlace", place).apply(); }
 
+    /**
+     * The screensaver's "Turn the screen off": minutes of screensaver before the TV goes to sleep (Screensaver), 0 right
+     * away, -1 never (the system's own timings, as before).
+     */
+    static int screenOff() { return sp().getInt("screenOff", -1); }
+
+    static void setScreenOff(int minutes) { sp().edit().putInt("screenOff", minutes).apply(); }
+
     // MARK: - Top buttons
 
     /**
