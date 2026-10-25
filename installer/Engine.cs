@@ -76,6 +76,24 @@ sealed class Engine {
         finally { Disconnect(); }
     }
 
+    int switchStep = StepActivate;   // l'étape où SwitchHome montre son avancement
+    bool replaced;   // l'ancienne version (autre clé) a été désinstallée : ses réglages sont perdus
+
+    /** Envoie l'APK à la TV ; renvoie ce que dit Android (« Success » ou l'erreur). */
+    string SendApk(string apk) {
+        string size = (new FileInfo(apk).Length / 1048576.0).ToString("0.0") + " Mo";
+        ui.Say(Tone.Info, "Si la TV affiche Play Protect : « Plus de détails » → « Installer quand même ».");
+        string r;
+        try {
+            r = device.Install(apk, p => ui.Step(StepInstall, StepState.Running, "Envoi de l'appli (" + size + ")... " + p + " %"));
+        } catch (IOException e) {
+            Disconnect();
+            throw new SetupException("L'envoi de l'appli a été coupé (" + e.Message + "). Vérifie le Wi-Fi, puis relance.");
+        }
+        Log("install -> " + r.Trim());
+        return r;
+    }
+
     string RunConnected() {
         string address = Normalize(o.Ip);
         if (address == null) throw new SetupException("Adresse IP invalide : « " + o.Ip + " » (exemple : 192.168.1.50).");
@@ -104,20 +122,28 @@ sealed class Engine {
         if (installed.Length > 0 && installed == Sha256(apk)) {
             ui.Step(StepInstall, StepState.Done, "Déjà à jour");
         } else {
-            string size = (new FileInfo(apk).Length / 1048576.0).ToString("0.0") + " Mo";
-            ui.Say(Tone.Info, "Si la TV affiche Play Protect : « Plus de détails » → « Installer quand même ».");
-            string r;
-            try {
-                r = device.Install(apk, p => ui.Step(StepInstall, StepState.Running, "Envoi de l'appli (" + size + ")... " + p + " %"));
-            } catch (IOException e) {
-                Disconnect();
-                throw new SetupException("L'envoi de l'appli a été coupé (" + e.Message + "). Vérifie le Wi-Fi, puis relance.");
+            string r = SendApk(apk);
+            if (r.Contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE")) {
+                // Une ancienne version signée avec une autre clé : Android refuse de la mettre à jour. On la remplace,
+                // une fois : accueil d'origine d'abord (ses applis mises de côté reviennent), puis désinstallation.
+                ui.Say(Tone.Info, "Ta TV a une ancienne version de FrontEndTV signée avec une autre clé : je la remplace (une seule fois).");
+                if (wasHome) {
+                    switchStep = StepInstall;
+                    bool back = SwitchHome("original", "", false);
+                    switchStep = StepActivate;
+                    if (!back) throw new SetupException("Impossible de remettre l'accueil d'origine avant de remplacer l'ancienne version. "
+                            + "Sur la TV : FrontEndTV → Écran d'accueil → Original, puis relance.");
+                }
+                ui.Step(StepInstall, StepState.Running, "Désinstallation de l'ancienne version...");
+                string u = Shell("pm uninstall " + Pkg);
+                if (!u.Contains("Success")) throw new SetupException("L'ancienne version n'a pas pu être désinstallée : " + LastLine(u));
+                first = true;
+                wasHome = false;
+                replaced = true;
+                r = SendApk(apk);
             }
-            Log("install -> " + r.Trim());
             ui.Say(Tone.Info, null);
             if (!r.Contains("Success")) {
-                if (r.Contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE"))
-                    throw new SetupException("Une autre version de FrontEndTV (signée autrement) est déjà sur la TV. Remets l'accueil d'origine, désinstalle-la (Paramètres → Applications), puis relance.");
                 if (r.Contains("INSTALL_FAILED_VERSION_DOWNGRADE"))
                     throw new SetupException("La TV a déjà une version plus récente de FrontEndTV.");
                 if (Regex.IsMatch(r, "USER_RESTRICTED|VERIFICATION_FAILURE|rejected"))
@@ -151,7 +177,11 @@ sealed class Engine {
         Thread.Sleep(2000);
         Shell("input keyevent KEYCODE_HOME");
         ui.Step(StepActivate, StepState.Done, "FrontEndTV est l'écran d'accueil");
-        return "C'est fait ! FrontEndTV est ton écran d'accueil : il vient de s'ouvrir sur la TV.";
+        string done = "C'est fait ! FrontEndTV est ton écran d'accueil : il vient de s'ouvrir sur la TV.";
+        if (replaced && key.Length == 0) {
+            done += " L'ancienne version a été remplacée : relance l'installateur avec ta clé TMDB pour retrouver les recommandations.";
+        }
+        return done;
     }
 
     string RunOriginal() {
@@ -257,7 +287,7 @@ sealed class Engine {
         bool prompted = false;
         var clock = Stopwatch.StartNew();
         while (clock.Elapsed.TotalSeconds < 240) {
-            ui.Step(StepActivate, StepState.Running, doing + " " + (int) clock.Elapsed.TotalSeconds + " s");
+            ui.Step(switchStep, StepState.Running, doing + " " + (int) clock.Elapsed.TotalSeconds + " s");
             Thread.Sleep(2000);
             if (device == null && !Reconnect()) continue;
             if (SwitchDone(mode)) { ui.Say(Tone.Info, null); return true; }

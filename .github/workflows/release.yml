@@ -34,16 +34,20 @@ jobs:
             exit 1
           fi
       - name: Clé de signature
+        id: key
         env:
           KEYSTORE: ${{ secrets.FREEMYTV_KEYSTORE }}
         run: |
+          # Sans le secret, rien n'est publié ici (la version peut être publiée à la main, déjà signée).
           if [ -z "$KEYSTORE" ]; then
-            echo "::error::Ajoute le secret FREEMYTV_KEYSTORE (voir en haut de .github/workflows/release.yml)."
-            exit 1
+            echo "::warning::Pas de secret FREEMYTV_KEYSTORE : rien à publier ici (voir en haut de .github/workflows/release.yml)."
+            exit 0
           fi
           printf '%s' "$KEYSTORE" | base64 -d > freemytv.keystore
           cp config.example.properties config.properties
+          echo "ok=true" >> "$GITHUB_OUTPUT"
       - name: Outils Android et compilateur C#
+        if: steps.key.outputs.ok == 'true'
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" \
             "build-tools;36.0.0" "platforms;android-34" > /dev/null
@@ -52,7 +56,9 @@ jobs:
           sudo apt-get install -y -q mono-mcs libmono-system-windows-forms4.0-cil libmono-system-drawing4.0-cil \
             libmono-system-numerics4.0-cil > /dev/null
       - run: bash build.sh
+        if: steps.key.outputs.ok == 'true'
       - name: Release
+        if: steps.key.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
