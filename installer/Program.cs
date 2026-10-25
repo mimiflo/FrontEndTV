@@ -127,11 +127,16 @@ sealed class MainForm : Form, IReport {
     public MainForm(Options o, bool auto) {
         options = o;
         this.auto = auto;
-        using (Graphics g = CreateGraphics()) scale = g.DpiX / 96f;
-        body = new Font("Segoe UI", 10f);
-        small = new Font("Segoe UI", 8.75f);
-        bold = new Font("Segoe UI Semibold", 10.5f);
-        title = new Font("Segoe UI Semibold", 20f);
+        // L'échelle de l'écran (125 %, 150 %...), réduite si la fenêtre ne tiendrait pas en hauteur
+        float dpi;
+        using (Graphics g = CreateGraphics()) dpi = g.DpiX / 96f;
+        Rectangle screen = Screen.FromPoint(Cursor.Position).WorkingArea;
+        scale = Math.Max(0.75f, Math.Min(dpi, (screen.Height - 56 * dpi) / Height0));
+        // Polices en pixels, à la même échelle que tout le reste : rien ne déborde ni ne s'étire
+        body = Px(14f, false);
+        small = Px(12.5f, false);
+        bold = Px(14.5f, true);
+        title = Px(28f, true);
 
         Text = "FrontEndTV — installation";
         FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -141,12 +146,13 @@ sealed class MainForm : Form, IReport {
         BackColor = Palette.Back;
         ForeColor = Palette.Text;
         Font = body;
-        ClientSize = new Size(S(520), S(660));
-        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) {}
+        ClientSize = new Size(S(Width0), S(Height0));
+        // L'icône en toutes tailles (16 à 192 px) : nette dans la barre de titre et la barre des tâches
         try {
-            using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("icon.png")) {
-                if (s != null) logo = Image.FromStream(new MemoryStream(ReadAll(s)));
-            }
+            using (Stream s = Resource("app.ico")) if (s != null) Icon = new Icon(new MemoryStream(ReadAll(s)));
+        } catch (Exception) {}
+        try {
+            using (Stream s = Resource("icon.png")) if (s != null) logo = Image.FromStream(new MemoryStream(ReadAll(s)));
         } catch (Exception) {}
 
         BuildSetup();
@@ -156,7 +162,17 @@ sealed class MainForm : Form, IReport {
         progress.Visible = false;
     }
 
+    const int Width0 = 520, Height0 = 640;   // taille de la fenêtre à 100 %
+
     int S(float v) { return (int) Math.Round(v * scale); }
+
+    Font Px(float px, bool semibold) {
+        return new Font(semibold ? "Segoe UI Semibold" : "Segoe UI", px * scale, GraphicsUnit.Pixel);
+    }
+
+    static Stream Resource(string name) {
+        return Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
+    }
 
     static byte[] ReadAll(Stream s) {
         var m = new MemoryStream();
@@ -186,7 +202,7 @@ sealed class MainForm : Form, IReport {
 
     Panel Page() {
         var p = new Panel();
-        p.Bounds = new Rectangle(0, 0, S(520), S(660));
+        p.Bounds = new Rectangle(0, 0, S(Width0), S(Height0));
         p.BackColor = Palette.Back;
         return p;
     }
@@ -239,12 +255,13 @@ sealed class MainForm : Form, IReport {
 
         int y = S(234);
         AddLabel(setup, "Adresse IP de la TV", bold, Palette.Text, S(32), y, S(300), S(22));
-        search = Link(setup, "Rechercher", S(388), y + S(2), S(100), ContentAlignment.MiddleRight, (s, e) => Search());
+        search = Link(setup, "Rechercher", S(388), y + S(2), S(100), ContentAlignment.MiddleRight, (s, e) => { Touch(); Search(); });
         ip = new Field("ex. 192.168.1.50", scale, body);
         ip.Bounds = new Rectangle(S(32), y + S(26), S(456), S(40));
         ip.Value = options.Ip;
         setup.Controls.Add(ip);
         ipStatus = AddLabel(setup, "", small, Palette.Dim, S(32), y + S(70), S(456), S(20));
+        ipStatus.AutoEllipsis = true;
 
         y = S(336);
         AddLabel(setup, "Ton prénom", bold, Palette.Text, S(32), y, S(300), S(22));
@@ -264,7 +281,7 @@ sealed class MainForm : Form, IReport {
         y = S(424);
         AddLabel(setup, "Clé TMDB", bold, Palette.Text, S(32), y, S(300), S(22));
         Link(setup, "Obtenir une clé gratuite", S(288), y + S(2), S(200), ContentAlignment.MiddleRight,
-                (s, e) => Open("https://www.themoviedb.org/settings/api"));
+                (s, e) => { Touch(); Open("https://www.themoviedb.org/settings/api"); });
         key = new Field("facultatif — vide : la TV garde sa clé", scale, body);
         key.Bounds = new Rectangle(S(32), y + S(26), S(456), S(40));
         key.Value = options.Key;
@@ -272,47 +289,105 @@ sealed class MainForm : Form, IReport {
         AddLabel(setup, "Pour les recommandations de films et séries. Elle reste sur ta TV.", small, Palette.Dim,
                 S(32), y + S(70), S(456), S(20));
 
-        go = new RoundButton("Installer FrontEndTV", Palette.Accent, Palette.AccentHover, Color.White, scale);
-        go.Font = new Font("Segoe UI Semibold", 11.5f);
-        go.Bounds = new Rectangle(S(32), S(540), S(456), S(50));
+        go = new RoundButton(GoText, Palette.Accent, Palette.AccentHover, Color.White, scale);
+        go.Font = Px(16f, true);
+        go.Bounds = new Rectangle(S(32), S(528), S(456), S(50));
         go.Click += (s, e) => Start(false);
         setup.Controls.Add(go);
-        Link(setup, "Remettre l'écran d'accueil d'origine", S(32), S(600), S(456), ContentAlignment.MiddleCenter, (s, e) => {
+        Link(setup, "Remettre l'écran d'accueil d'origine", S(32), S(588), S(456), ContentAlignment.MiddleCenter, (s, e) => {
+            Touch();
             if (MessageBox.Show(this, "Remettre l'écran d'accueil d'origine de la TV ?\nLes applis mises de côté reviennent comme avant.",
                     "FrontEndTV", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK) Start(true);
         });
         AddLabel(setup, "par Florian · d'après Free My TV (licence MIT)", small, Color.FromArgb(110, 104, 132),
-                S(32), S(628), S(456), S(20)).TextAlign = ContentAlignment.MiddleCenter;
+                S(32), S(612), S(456), S(20)).TextAlign = ContentAlignment.MiddleCenter;
         foreach (Field f in new[] { ip, name, region, key }) {
-            f.Box.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Start(false); } };
+            f.Box.KeyDown += (s, e) => {
+                if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Start(false); } else Touch();
+            };
+            f.Box.MouseDown += (s, e) => Touch();
+            f.MouseDown += (s, e) => Touch();
         }
+        rescan.Interval = 4000;
+        rescan.Tick += (s, e) => {
+            rescan.Stop();
+            if (setup.Visible && ip.Value.Length == 0) Search();
+        };
+        countdown.Interval = 1000;
+        countdown.Tick += (s, e) => {
+            if (--remaining <= 0) { StopCountdown(); Start(false); } else go.Text = GoText + "  ·  " + remaining + " s";
+        };
     }
 
     /** Cherche la TV : celle de la dernière fois, sinon tout le réseau local. */
     void Search() {
-        search.Enabled = false;
+        rescan.Stop();
+        if (searching) return;
+        searching = true;
+        search.LinkColor = Palette.Dim;
         Status("Recherche de la TV sur ton réseau...", Palette.Dim);
         var t = new Thread(() => {
             string last = Engine.LastTV();
             List<string> found = last != null ? new List<string> { last } : Engine.FindTVs();
             Post(() => {
-                search.Enabled = true;
+                searching = false;
+                search.LinkColor = Palette.AccentHover;
                 if (found.Count == 0) {
-                    Status("Aucune TV trouvée : entre son adresse IP (sur la TV : Paramètres → Réseau).", Palette.Amber);
+                    // On recherche toute seule toutes les 4 s : dès que la TV répond, ça démarre
+                    Status("Aucune TV trouvée pour l'instant — je continue de chercher...", Palette.Amber);
                     ip.Box.Focus();
+                    rescan.Start();
                     return;
                 }
                 if (ip.Value.Length == 0 || ip.Value == lastSuggested) ip.Value = found[0];
                 lastSuggested = found[0];
-                Status(found.Count == 1 ? (last != null ? "✔ Ta TV de la dernière fois" : "✔ TV trouvée sur ton réseau")
-                        : "✔ " + found.Count + " appareils trouvés : " + string.Join(", ", found), Palette.Green);
-                if (auto) Start(options.Original);
+                if (auto) { Start(options.Original); return; }
+                if (found.Count > 1) {
+                    Status("✔ " + found.Count + " appareils trouvés : " + string.Join(", ", found) + " — choisis le bon.", Palette.Green);
+                    return;
+                }
+                Status((last != null ? "✔ Ta TV de la dernière fois" : "✔ TV trouvée sur ton réseau")
+                        + (touched ? "" : " — démarrage automatique"), Palette.Green);
+                StartCountdown(last != null ? 4 : 8);
             });
         });
         t.IsBackground = true;
         t.Start();
     }
     string lastSuggested = "";
+    bool searching;
+
+    // MARK: - Démarrage automatique (s'arrête dès qu'on touche à un champ)
+
+    const string GoText = "Installer FrontEndTV";
+    readonly System.Windows.Forms.Timer countdown = new System.Windows.Forms.Timer();
+    readonly System.Windows.Forms.Timer rescan = new System.Windows.Forms.Timer();
+    int remaining;
+    bool touched;
+
+    void StartCountdown(int seconds) {
+        if (touched || (worker != null && worker.IsAlive)) return;
+        remaining = seconds;
+        go.Text = GoText + "  ·  " + remaining + " s";
+        countdown.Start();
+    }
+
+    void StopCountdown() {
+        countdown.Stop();
+        go.Text = GoText;
+    }
+
+    /** On touche à un réglage : plus de démarrage automatique. */
+    void Touch() {
+        if (touched) return;
+        touched = true;
+        if (countdown.Enabled) {
+            StopCountdown();
+            if (ipStatus.Text.Contains(" — démarrage automatique")) {
+                Status(ipStatus.Text.Substring(0, ipStatus.Text.IndexOf(" — démarrage automatique")), Palette.Green);
+            }
+        }
+    }
 
     void Status(string text, Color color) {
         ipStatus.Text = text;
@@ -327,33 +402,35 @@ sealed class MainForm : Form, IReport {
         pageTitle = AddLabel(progress, "", bold, Palette.Text, S(32), S(108), S(456), S(24));
 
         steps = new Steps(scale, bold, small);
-        steps.Bounds = new Rectangle(S(32), S(140), S(456), S(4 * 62));
+        steps.Bounds = new Rectangle(S(32), S(144), S(456), S(3 * 64));
         progress.Controls.Add(steps);
 
-        message = new Message(scale, body);
-        message.Bounds = new Rectangle(S(32), S(404), S(456), S(124));
+        message = new Message(scale, body, Px(13.5f, true));
+        message.Bounds = new Rectangle(S(32), S(356), S(456), S(140));
         message.Done.Click += (s, e) => { message.Done.Visible = false; userDone.Set(); };
         message.Visible = false;
         progress.Controls.Add(message);
 
         retry = new RoundButton("Réessayer", Palette.Accent, Palette.AccentHover, Color.White, scale);
         retry.Font = bold;
-        retry.Bounds = new Rectangle(S(32), S(560), S(220), S(46));
+        retry.Bounds = new Rectangle(S(32), S(530), S(220), S(48));
         retry.Click += (s, e) => { progress.Visible = false; setup.Visible = true; go.Focus(); };
         progress.Controls.Add(retry);
         close = new RoundButton("Fermer", Palette.Field, Palette.Border, Palette.Text, scale);
         close.Font = bold;
-        close.Bounds = new Rectangle(S(268), S(560), S(220), S(46));
+        close.Bounds = new Rectangle(S(268), S(530), S(220), S(48));
         close.Click += (s, e) => Close();
         progress.Controls.Add(close);
-        Link(progress, "Ouvrir le journal", S(32), S(620), S(456), ContentAlignment.MiddleCenter, (s, e) => Open(Engine.LogFile));
+        Link(progress, "Ouvrir le journal", S(32), S(596), S(456), ContentAlignment.MiddleCenter, (s, e) => Open(Engine.LogFile));
     }
 
     void Start(bool original) {
+        StopCountdown();
+        rescan.Stop();
         if (worker != null && worker.IsAlive) return;
         if (Engine.Normalize(ip.Value) == null) {
-            Status(ip.Value.Length == 0 ? "Entre l'adresse IP de la TV (sur la TV : Paramètres → Réseau et Internet)."
-                    : "Ça ne ressemble pas à une adresse IP (4 nombres séparés par des points).", Palette.Amber);
+            Status(ip.Value.Length == 0 ? "Entre l'adresse IP de la TV (Paramètres → Réseau et Internet)."
+                    : "Ça ne ressemble pas à une adresse IP (ex. 192.168.1.50).", Palette.Amber);
             ip.Box.Focus();
             return;
         }
@@ -368,7 +445,7 @@ sealed class MainForm : Form, IReport {
         setup.Visible = false;
         progress.Visible = true;
         pageTitle.Text = original ? "Retour à l'écran d'accueil d'origine" : "Installation de FrontEndTV";
-        steps.Reset(new[] { "Outils Android", "Connexion à la TV", original ? "Application" : "Installation de l'appli",
+        steps.Reset(new[] { "Connexion à la TV", original ? "Application" : "Installation de l'appli",
                 original ? "Accueil d'origine" : "Activation comme écran d'accueil" });
         Say(Tone.Info, null);
         retry.Visible = false;
@@ -426,7 +503,7 @@ sealed class MainForm : Form, IReport {
     public void WaitForUser(string text, int seconds) {
         userDone.Reset();
         for (int s = seconds; s > 0; s--) {
-            string line = text + "\nJe continue tout seul dans " + s + " s.";
+            string line = text + "\nPas de message ? Appuie sur « C'est fait » (sinon je continue dans " + s + " s).";
             Post(() => {
                 message.Visible = true;
                 message.Display(Tone.Action, line);
@@ -474,21 +551,34 @@ sealed class Header : Control {
         BackColor = Palette.Back;
     }
 
+    Bitmap scaled;   // le logo réduit une fois, en haute qualité
+
     protected override void OnPaint(PaintEventArgs e) {
         Graphics g = e.Graphics;
+        g.Clear(BackColor);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         int size = Height;
         if (logo != null) {
-            using (var clip = Palette.Round(new RectangleF(0, 0, size, size), size * 0.24f)) {
-                g.SetClip(clip);
-                g.DrawImage(logo, new Rectangle(0, 0, size, size));
-                g.ResetClip();
+            if (scaled == null || scaled.Width != size) {
+                scaled = new Bitmap(size, size);
+                using (Graphics s = Graphics.FromImage(scaled)) {
+                    s.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    s.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    s.CompositingQuality = CompositingQuality.HighQuality;
+                    s.DrawImage(logo, new Rectangle(0, 0, size, size));
+                }
             }
+            // Remplir un chemin arrondi avec l'image : bords lissés (une découpe SetClip ferait des escaliers)
+            using (var path = Palette.Round(new RectangleF(0, 0, size, size), size * 0.24f))
+            using (var brush = new TextureBrush(scaled)) g.FillPath(brush, path);
         }
         int x = logo != null ? size + (int) (16 * scale) : 0;
-        TextRenderer.DrawText(g, line1, big, new Point(x, (int) (2 * scale)), Palette.Text, TextFormatFlags.NoPadding);
-        TextRenderer.DrawText(g, line2, small, new Point(x + (int) (2 * scale), (int) (40 * scale)), Palette.Dim, TextFormatFlags.NoPadding);
+        int h1 = TextRenderer.MeasureText(g, line1, big, Size.Empty, TextFormatFlags.NoPadding).Height;
+        int h2 = TextRenderer.MeasureText(g, line2, small, Size.Empty, TextFormatFlags.NoPadding).Height;
+        int top = Math.Max(0, (size - h1 - h2) / 2);
+        TextRenderer.DrawText(g, line1, big, new Point(x, top), Palette.Text, Palette.Back, TextFormatFlags.NoPadding);
+        TextRenderer.DrawText(g, line2, small, new Point(x + (int) (1 * scale), top + h1), Palette.Dim, Palette.Back, TextFormatFlags.NoPadding);
     }
 }
 
@@ -599,12 +689,18 @@ sealed class RoundButton : Control {
         Graphics g = e.Graphics;
         g.Clear(BackColor);   // la couleur derrière les coins arrondis
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        Color c = !Enabled ? Palette.Border : over || Focused ? Hover : Fill;
+        Color c = !Enabled ? Palette.Border : over ? Hover : Fill;
         if (down) c = ControlPaint.Dark(c, 0.05f);
-        using (var path = Palette.Round(new RectangleF(0, 0, Width - 1, Height - 1), 12 * scale))
-        using (var b = new SolidBrush(c)) g.FillPath(b, path);
-        TextRenderer.DrawText(g, Text, Font, ClientRectangle, Ink,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+        using (var path = Palette.Round(new RectangleF(0.5f, 0.5f, Width - 2, Height - 2), 12 * scale))
+        using (var b = new SolidBrush(c)) {
+            g.FillPath(b, path);
+            if (Focused && ShowFocusCues) using (var pen = new Pen(Color.FromArgb(150, Color.White), 1.5f * scale)) g.DrawPath(pen, path);
+        }
+        // Le texte avec sa couleur de fond (ClearType net), sur sa seule surface : les coins restent arrondis
+        const TextFormatFlags flags = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+        Size text = TextRenderer.MeasureText(g, Text, Font, Size.Empty, flags);
+        var at = new Point((Width - text.Width) / 2, (Height - text.Height) / 2);
+        TextRenderer.DrawText(g, Text, Font, new Rectangle(at, text), Ink, c, flags);
     }
 }
 
@@ -653,7 +749,7 @@ sealed class Steps : Control {
         Graphics g = e.Graphics;
         g.Clear(BackColor);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        float row = 62 * scale, dot = 26 * scale;
+        float row = 64 * scale, dot = 26 * scale;
         for (int i = 0; i < titles.Length; i++) {
             float y = i * row;
             var circle = new RectangleF(1, y + 4 * scale, dot, dot);
@@ -699,9 +795,10 @@ sealed class Steps : Control {
                     break;
             }
             int x = (int) (dot + 16 * scale);
-            TextRenderer.DrawText(g, titles[i], name, new Point(x, (int) (y + 2 * scale)), ink, TextFormatFlags.NoPadding);
-            TextRenderer.DrawText(g, details[i], detail, new Rectangle(x, (int) (y + 26 * scale), Width - x, (int) (20 * scale)),
-                    Palette.Dim, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+            int h = TextRenderer.MeasureText(g, "Ag", name, Size.Empty, TextFormatFlags.NoPadding).Height;
+            TextRenderer.DrawText(g, titles[i], name, new Point(x, (int) (y + 4 * scale)), ink, BackColor, TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, details[i], detail, new Rectangle(x, (int) (y + 6 * scale) + h, Width - x, (int) (22 * scale)),
+                    Palette.Dim, BackColor, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
         }
         if (Array.IndexOf(states, StepState.Running) < 0) spin.Stop();
     }
@@ -713,24 +810,34 @@ sealed class Message : Control {
     readonly float scale;
     Color tint = Palette.Accent;
 
-    public Message(float scale, Font font) {
+    public Message(float scale, Font font, Font buttonFont) {
         this.scale = scale;
         Font = font;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         BackColor = Palette.Back;
         Done = new RoundButton("C'est fait", Palette.Accent, Palette.AccentHover, Color.White, scale);
-        Done.Font = new Font("Segoe UI Semibold", 9.5f);
+        Done.Font = buttonFont;
         Done.BackColor = Palette.Card;
         Done.Visible = false;
-        Done.VisibleChanged += (s, e) => Invalidate();
+        Done.VisibleChanged += (s, e) => { Fit(); Invalidate(); };
         Controls.Add(Done);
     }
 
     public void Display(Tone tone, string text) {
         tint = Palette.For(tone);
         Done.BackColor = Palette.Mix(Palette.Card, tint, 28);
-        Text = text;
+        Text = text.Replace("« ", "«\u00a0").Replace(" »", "\u00a0»");   // les guillemets ne restent pas seuls en bout de ligne
+        Fit();
         Invalidate();
+    }
+
+    /** La hauteur juste pour le texte (et le bouton « C'est fait » s'il est là). */
+    void Fit() {
+        int left = (int) (28 * scale), right = (int) (18 * scale);
+        Size t = TextRenderer.MeasureText(Text ?? "", Font, new Size(Width - left - right, int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+        int h = t.Height + (int) (14 * scale) + (Done.Visible ? (int) (58 * scale) : (int) (14 * scale));
+        Height = Math.Max((int) (56 * scale), h);
     }
 
     protected override void OnLayout(LayoutEventArgs e) {
@@ -743,16 +850,16 @@ sealed class Message : Control {
         Graphics g = e.Graphics;
         g.Clear(Parent != null ? Parent.BackColor : Palette.Back);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using (var path = Palette.Round(new RectangleF(0, 0, Width - 1, Height - 1), 12 * scale)) {
-            using (var b = new SolidBrush(Palette.Mix(Palette.Card, tint, 28))) g.FillPath(b, path);
-            g.SetClip(path);
-            using (var b = new SolidBrush(tint)) g.FillRectangle(b, 0, 0, 5 * scale, Height);
-            g.ResetClip();
-        }
-        int pad = (int) (20 * scale);
-        int bottom = Done.Visible ? (int) (50 * scale) : pad - (int) (6 * scale);
-        TextRenderer.DrawText(g, Text, Font, new Rectangle(pad, (int) (14 * scale), Width - pad - (int) (16 * scale), Height - (int) (14 * scale) - bottom),
-                Palette.Text, TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+        Color fill = Palette.Mix(Palette.Card, tint, 28);
+        using (var path = Palette.Round(new RectangleF(0, 0, Width - 1, Height - 1), 12 * scale))
+        using (var b = new SolidBrush(fill)) g.FillPath(b, path);
+        // Le liseré de couleur : une petite barre arrondie (lissée), à l'intérieur de la carte
+        using (var bar = Palette.Round(new RectangleF(10 * scale, 14 * scale, 4 * scale, Height - 28 * scale), 2 * scale))
+        using (var b = new SolidBrush(tint)) g.FillPath(b, bar);
+        int left = (int) (28 * scale), right = (int) (18 * scale), top = (int) (14 * scale);
+        int bottom = Done.Visible ? (int) (54 * scale) : (int) (12 * scale);
+        TextRenderer.DrawText(g, Text, Font, new Rectangle(left, top, Width - left - right, Height - top - bottom),
+                Palette.Text, fill, TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
     }
 }
 }

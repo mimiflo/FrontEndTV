@@ -27,7 +27,7 @@ jobs:
         run: |
           sudo apt-get update -q > /dev/null
           sudo apt-get install -y -q mono-mcs libmono-system-windows-forms4.0-cil libmono-system-drawing4.0-cil \
-            libmono-system-io-compression4.0-cil > /dev/null
+            libmono-system-numerics4.0-cil > /dev/null
       - run: ./build.sh
       - run: test -f FrontEndTV-Installateur.exe
       - uses: actions/upload-artifact@v4

@@ -1,4 +1,4 @@
-// FrontEndTV — installateur : tout le travail avec la TV (adb), sans interface. Program.cs l'affiche.
+// FrontEndTV — installateur : tout le travail avec la TV, sans interface. Program.cs l'affiche, Adb.cs parle à la TV.
 // Développé par Florian. Écrit en C# 5 : il se compile avec le csc.exe livré avec Windows.
 
 using System;
@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -43,20 +42,22 @@ sealed class SetupException : Exception {
 
 sealed class Engine {
     public const string Pkg = "io.freemytv";
-    public const int StepTools = 0, StepConnect = 1, StepInstall = 2, StepActivate = 3;
+    public const int StepConnect = 0, StepInstall = 1, StepActivate = 2;
 
-    /** Dossier de travail : adb, le journal, l'APK extrait, l'adresse de la dernière TV. */
+    /** Dossier de travail : la clé ADB de ce PC, le journal, l'APK extrait, l'adresse de la dernière TV. */
     public static readonly string Home = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FrontEndTV");
     public static readonly string LogFile = Path.Combine(Home, "installateur-journal.txt");
     static readonly string MemoryFile = Path.Combine(Home, "installateur.ini");
+    static readonly string KeyFile = Path.Combine(Home, "cle-adb.xml");
     static readonly object LogLock = new object();
 
-    public string AdbPath;   // trouvé (ou téléchargé) à l'étape 1 ; réglable pour les essais
     readonly IReport ui;
     readonly Options o;
-    string tv;   // "ip:port"
-    int sdk;
+    AdbKey adbKey;
+    AdbDevice device;
+    string host;
+    int port, sdk;
     string secret = "";   // jamais dans le journal
 
     public Engine(IReport ui, Options o) {
@@ -71,22 +72,25 @@ sealed class Engine {
         Directory.CreateDirectory(Home);
         Log("=== " + DateTime.Now.ToString("s") + (o.Original ? " (retour à l'origine)" : ""));
         secret = o.Key ?? "";
+        try { return RunConnected(); }
+        finally { Disconnect(); }
+    }
 
-        ui.Step(StepTools, StepState.Running, "Recherche d'adb...");
-        if (AdbPath == null) AdbPath = FindAdb();
-        Adb(30000, "start-server");
-        ui.Step(StepTools, StepState.Done, "Prêts");
-
-        ui.Step(StepConnect, StepState.Running, "Connexion à " + Display(o.Ip) + "...");
+    string RunConnected() {
         string address = Normalize(o.Ip);
         if (address == null) throw new SetupException("Adresse IP invalide : « " + o.Ip + " » (exemple : 192.168.1.50).");
-        Connect(address);
-        string model = Shell("getprop ro.product.manufacturer") + " " + Shell("getprop ro.product.model");
+        string[] parts = address.Split(':');
+        host = parts[0];
+        port = int.Parse(parts[1]);
+        ui.Step(StepConnect, StepState.Running, "Connexion à " + Display(address) + "...");
+        adbKey = AdbKey.LoadOrCreate(KeyFile);
+        Connect(120000);
+        string model = (Shell("getprop ro.product.manufacturer") + " " + Shell("getprop ro.product.model")).Trim();
         int.TryParse(Shell("getprop ro.build.version.sdk"), out sdk);
         string release = Shell("getprop ro.build.version.release");
         Remember("ip", address);
         if (sdk > 0 && sdk < 26) throw new SetupException("Cette TV a Android " + release + " : FrontEndTV demande Android 8 ou plus récent.");
-        ui.Step(StepConnect, StepState.Done, model.Trim() + " · Android " + release);
+        ui.Step(StepConnect, StepState.Done, model + " · Android " + release);
         bool wasHome = HomeActivity().StartsWith(Pkg + "/");
 
         return o.Original ? RunOriginal() : RunInstall(wasHome);
@@ -100,9 +104,16 @@ sealed class Engine {
         if (installed.Length > 0 && installed == Sha256(apk)) {
             ui.Step(StepInstall, StepState.Done, "Déjà à jour");
         } else {
-            ui.Step(StepInstall, StepState.Running, "Envoi de l'appli (" + (new FileInfo(apk).Length / 1048576.0).ToString("0.0") + " Mo)...");
+            string size = (new FileInfo(apk).Length / 1048576.0).ToString("0.0") + " Mo";
             ui.Say(Tone.Info, "Si la TV affiche Play Protect : « Plus de détails » → « Installer quand même ».");
-            string r = Adb(300000, "-s", tv, "install", "-r", apk);
+            string r;
+            try {
+                r = device.Install(apk, p => ui.Step(StepInstall, StepState.Running, "Envoi de l'appli (" + size + ")... " + p + " %"));
+            } catch (IOException e) {
+                Disconnect();
+                throw new SetupException("L'envoi de l'appli a été coupé (" + e.Message + "). Vérifie le Wi-Fi, puis relance.");
+            }
+            Log("install -> " + r.Trim());
             ui.Say(Tone.Info, null);
             if (!r.Contains("Success")) {
                 if (r.Contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE"))
@@ -140,7 +151,6 @@ sealed class Engine {
         Thread.Sleep(2000);
         Shell("input keyevent KEYCODE_HOME");
         ui.Step(StepActivate, StepState.Done, "FrontEndTV est l'écran d'accueil");
-        Adb(10000, "disconnect", tv);
         return "C'est fait ! FrontEndTV est ton écran d'accueil : il vient de s'ouvrir sur la TV.";
     }
 
@@ -156,122 +166,52 @@ sealed class Engine {
         }
         Shell("input keyevent KEYCODE_HOME");
         ui.Step(StepActivate, StepState.Done, "Accueil d'origine remis");
-        Adb(10000, "disconnect", tv);
         return "L'écran d'accueil d'origine est revenu, avec toutes les applis. Pour supprimer FrontEndTV : Paramètres → Applications → FrontEndTV → Désinstaller.";
     }
 
-    // MARK: - adb
+    // MARK: - Connexion (client ADB intégré : Adb.cs)
 
-    string FindAdb() {
-        var candidates = new List<string> { Path.Combine(Home, @"platform-tools\adb.exe") };
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        candidates.Add(Path.Combine(local, @"Android\Sdk\platform-tools\adb.exe"));
-        foreach (string dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)) {
-            try { if (dir.Trim().Length > 0) candidates.Add(Path.Combine(dir.Trim(), "adb.exe")); } catch (ArgumentException) {}
-        }
-        foreach (string c in candidates) if (File.Exists(c)) return c;
-
-        // Les outils officiels de Google (~10 Mo), une seule fois
-        ui.Step(StepTools, StepState.Running, "Téléchargement des outils Android de Google...");
-        string zip = Path.Combine(Home, "platform-tools.zip");
+    void Connect(int approvalMs) {
+        Disconnect();
         try {
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-            var request = (HttpWebRequest) WebRequest.Create("https://dl.google.com/android/repository/platform-tools-latest-windows.zip");
-            request.Timeout = 30000;
-            using (var response = request.GetResponse())
-            using (var input = response.GetResponseStream())
-            using (var output = File.Create(zip)) {
-                long total = response.ContentLength, done = 0;
-                var buffer = new byte[65536];
-                int n, shown = -1;
-                while ((n = input.Read(buffer, 0, buffer.Length)) > 0) {
-                    output.Write(buffer, 0, n);
-                    done += n;
-                    int percent = total > 0 ? (int) (done * 100 / total) : -1;
-                    if (percent != shown && percent >= 0) {
-                        shown = percent;
-                        ui.Step(StepTools, StepState.Running, "Téléchargement des outils Android de Google... " + percent + " %");
-                    }
-                }
-            }
-            using (var archive = new ZipArchive(File.OpenRead(zip), ZipArchiveMode.Read)) {
-                foreach (var entry in archive.Entries) {
-                    if (!entry.FullName.StartsWith("platform-tools/") || entry.FullName.EndsWith("/") || entry.FullName.Contains("..")) continue;
-                    string target = Path.Combine(Home, entry.FullName.Replace('/', Path.DirectorySeparatorChar));
-                    Directory.CreateDirectory(Path.GetDirectoryName(target));
-                    using (var from = entry.Open())
-                    using (var to = File.Create(target)) from.CopyTo(to);
-                }
-            }
-        } catch (Exception e) {
-            throw new SetupException("Impossible de télécharger les outils Android (Internet ?) : " + e.Message);
-        } finally {
-            try { File.Delete(zip); } catch (Exception) {}
-        }
-        string adb = Path.Combine(Home, @"platform-tools\adb.exe");
-        if (!File.Exists(adb)) throw new SetupException("adb introuvable après le téléchargement.");
-        return adb;
-    }
-
-    /** adb avec ses arguments ; renvoie sa sortie (stdout et stderr), ne lève jamais d'erreur d'adb. */
-    string Adb(int timeoutMs, params string[] args) {
-        var start = new ProcessStartInfo(AdbPath, string.Join(" ", args.Select(Quote)));
-        start.UseShellExecute = false;
-        start.CreateNoWindow = true;
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
-        start.StandardOutputEncoding = Encoding.UTF8;
-        start.StandardErrorEncoding = Encoding.UTF8;
-        var text = new StringBuilder();
-        var outDone = new ManualResetEvent(false);
-        var errDone = new ManualResetEvent(false);
-        string result;
-        try {
-            using (var p = new Process()) {
-                p.StartInfo = start;
-                p.OutputDataReceived += (s, e) => { if (e.Data == null) outDone.Set(); else lock (text) text.AppendLine(e.Data); };
-                p.ErrorDataReceived += (s, e) => { if (e.Data == null) errDone.Set(); else lock (text) text.AppendLine(e.Data); };
-                p.Start();
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-                if (!p.WaitForExit(timeoutMs)) {
-                    try { p.Kill(); } catch (Exception) {}
-                    lock (text) text.AppendLine("(adb ne répond plus)");
-                }
-                // Le serveur adb lancé au passage garde parfois la sortie ouverte : on n'attend pas plus de 2 s.
-                if (outDone.WaitOne(2000)) errDone.WaitOne(500);
-            }
-            lock (text) result = text.ToString().Trim();
-        } catch (Exception e) {
-            result = "(adb n'a pas pu démarrer : " + e.Message + ")";
-        }
-        Log("adb " + string.Join(" ", args) + " -> " + result.Replace("\r", "").Replace("\n", " | "));
-        return result;
-    }
-
-    string Shell(string command) { return Adb(60000, "-s", tv, "shell", command).Trim(); }
-    string State() { return Adb(15000, "-s", tv, "get-state").Trim(); }
-
-    void Connect(string address) {
-        tv = address;
-        Adb(10000, "disconnect", tv);
-        string r = Adb(20000, "connect", tv);
-        if (Regex.IsMatch(r, "cannot|failed|refused|unable|timed out", RegexOptions.IgnoreCase)) {
-            throw new SetupException("Pas de réponse de " + Display(address) + ". Vérifie que la TV est allumée, sur le même réseau, et que « Débogage USB » est activé.");
-        }
-        bool asked = false;
-        for (int i = 0; i < 120; i++) {
-            string state = State();
-            if (state == "device") { ui.Say(Tone.Info, null); return; }
-            if (!asked) {
-                asked = true;
+            device = AdbDevice.Connect(host, port, adbKey, "FrontEndTV-Installateur@" + Environment.MachineName, approvalMs, () => {
                 ui.Say(Tone.Action, "Regarde la TV : accepte « Autoriser le débogage USB ? » en cochant « Toujours autoriser ».");
+                ui.Step(StepConnect, StepState.Running, "En attente de ton accord sur la TV...");
+            });
+            Log("connecté à " + host + ":" + port);
+            ui.Say(Tone.Info, null);
+        } catch (IOException e) {
+            Log("connexion : " + e.Message);
+            if (e.Message.StartsWith("pas de réponse")) {
+                throw new SetupException("La TV ne répond pas à l'adresse " + host + ". Vérifie qu'elle est allumée, sur le même réseau "
+                        + "que ce PC, et que « Débogage USB » est activé (Paramètres → Système → Options pour les développeurs).");
             }
-            ui.Step(StepConnect, StepState.Running, "En attente de ton accord sur la TV... " + (120 - i) + " s");
-            Thread.Sleep(1000);
-            if (i % 6 == 5 && state != "unauthorized") Adb(20000, "connect", tv);
+            throw new SetupException("Connexion à la TV impossible : " + e.Message + ".");
         }
-        throw new SetupException("La TV n'a pas autorisé ce PC (2 minutes). Relance et accepte le message sur la TV.");
+    }
+
+    /** Reconnecte en silence (TV qui a coupé, Wi-Fi qui a sauté) ; false si elle ne répond pas encore. */
+    bool Reconnect() {
+        try { Connect(15000); return true; } catch (SetupException) { return false; }
+    }
+
+    void Disconnect() {
+        if (device != null) { device.Dispose(); device = null; }
+    }
+
+    /** Une commande dans le shell de la TV ; "" si la connexion a sauté (elle sera refaite au prochain essai). */
+    string Shell(string command) {
+        if (device == null && !Reconnect()) return "";
+        string r;
+        try {
+            r = device.Shell(command).Trim();
+        } catch (IOException e) {
+            r = "";
+            Log("shell : " + e.Message);
+            Disconnect();
+        }
+        Log("$ " + command + " -> " + r.Replace("\r", "").Replace("\n", " | "));
+        return r;
     }
 
     string HomeActivity() {
@@ -310,9 +250,8 @@ sealed class Engine {
         Shell("am start -n " + Pkg + "/.SettingsActivity --es switch " + mode + extras);
         if (maybePrompt && sdk < 30) {
             // Android 8 à 10 peut donner la réponse du message au PC encore connecté : on se déconnecte pendant ce temps.
-            Adb(10000, "disconnect", tv);
-            ui.WaitForUser(Prompt + "\nPas de message sur la TV ? Appuie simplement sur « C'est fait ».", 45);
-            Adb(20000, "connect", tv);
+            Disconnect();
+            ui.WaitForUser(Prompt, 45);
         }
         string doing = mode == "free" ? "Activation (les applis publicitaires sont mises de côté)..." : "Retour à l'accueil d'origine...";
         bool prompted = false;
@@ -320,7 +259,7 @@ sealed class Engine {
         while (clock.Elapsed.TotalSeconds < 240) {
             ui.Step(StepActivate, StepState.Running, doing + " " + (int) clock.Elapsed.TotalSeconds + " s");
             Thread.Sleep(2000);
-            if (State() != "device") { Adb(20000, "connect", tv); continue; }
+            if (device == null && !Reconnect()) continue;
             if (SwitchDone(mode)) { ui.Say(Tone.Info, null); return true; }
             if (!prompted && sdk >= 30 && DebugPromptShown()) {
                 prompted = true;
@@ -486,21 +425,6 @@ sealed class Engine {
     static string LastLine(string text) {
         string[] lines = text.Replace("\r", "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
         return lines.Length == 0 ? "" : lines[lines.Length - 1].Trim();
-    }
-
-    /** Un argument pour la ligne de commande Windows (entre guillemets, \ et " protégés). */
-    static string Quote(string a) {
-        if (a.Length > 0 && a.IndexOfAny(new[] { ' ', '\t', '"' }) < 0) return a;
-        var b = new StringBuilder("\"");
-        int slashes = 0;
-        foreach (char c in a) {
-            if (c == '\\') { slashes++; continue; }
-            b.Append('\\', c == '"' ? slashes * 2 + 1 : slashes);
-            slashes = 0;
-            b.Append(c);
-        }
-        b.Append('\\', slashes * 2).Append('"');
-        return b.ToString();
     }
 }
 }

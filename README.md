@@ -29,9 +29,10 @@ Il faut une **Google TV ou Android TV** (Android 8 ou plus récent) et un **PC W
    - *Paramètres → Système → Options pour les développeurs* : active **Débogage USB**.
 2. **Sur le PC** : télécharge **`FrontEndTV-Installateur.exe`** dans [Releases](../../releases). Un seul fichier :
    l'appli est dedans.
-3. Double-clique dessus, vérifie l'adresse de la TV (trouvée toute seule), puis **Installer FrontEndTV**. Il fait tout :
-   - **trouve la TV tout seul** (celle de la dernière fois, sinon il cherche sur le réseau) ;
-   - télécharge les outils Android de Google si besoin ;
+3. Double-clique dessus. Il fait tout, seul (tu peux remplir ton prénom et ta clé TMDB avant que ça démarre) :
+   - **trouve la TV tout seul** (celle de la dernière fois, sinon il cherche sur le réseau, en continu) et
+     **démarre l'installation automatiquement** après quelques secondes ;
+   - parle directement à la TV : rien d'autre à télécharger ni à installer, même pas les outils Android ;
    - installe l'appli (ou la met à jour ; rien à faire si elle est déjà à jour), envoie ton prénom, ton pays et ta
      clé TMDB (facultatifs) ;
    - **active FrontEndTV comme écran d'accueil**, attend la confirmation et l'ouvre sur la TV.
@@ -72,7 +73,8 @@ adb install -r FrontEndTV.apk
 ```
 
 Sous Windows, `build.sh` crée aussi **`FrontEndTV-Installateur.exe`** (avec l'APK dedans) grâce au compilateur C#
-fourni avec Windows ; ailleurs, il faut Mono (`mcs`). Le code de l'installateur est dans `installer/`.
+fourni avec Windows ; ailleurs, il faut Mono (`mcs`). Le code de l'installateur est dans `installer/` (`Adb.cs` : son
+propre client ADB, pour ne dépendre d'aucun outil externe).
 
 - `config.properties` (clé TMDB, ville, pays, prénom…) et `freemytv.keystore` (la clé de signature créée au premier
   build) restent sur ton PC : ils sont exclus de Git. **Garde `freemytv.keystore`** : les mises à jour doivent être

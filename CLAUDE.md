@@ -18,7 +18,10 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | `app/assets/i18n/*.json` | Traductions (clé = texte anglais) |
 | `app/res/drawable-nodpi/` | `icon.png` (192×192) et `banner.png` (640×360) |
 | `installer/Program.cs` | Installateur Windows `FrontEndTV-Installateur.exe` : la fenêtre (thème sombre/violet, WinForms) |
-| `installer/Engine.cs` | Installateur : tout le travail avec la TV (adb), sans interface |
+| `installer/Engine.cs` | Installateur : tout le travail avec la TV, sans interface |
+| `installer/Adb.cs` | Installateur : client ADB intégré (clé RSA, `shell:`, installation par `exec:cmd package install -S`) — pas d'adb.exe |
+| `installer/MakeIcon.java` | `build.sh` : icône `.ico` en 10 tailles (16 → 192 px) à partir de `icon.png` |
+| `.claude/skills/find-skills/` | Skill « find-skills » (vercel-labs/skills, MIT) : chercher et installer d'autres skills (`npx skills`) |
 | `build.sh` | Compilation sans Gradle : aapt2 → javac → d8 → zipalign → apksigner → `FrontEndTV.apk`, puis l'installateur `.exe` |
 
 ## Compiler
@@ -38,19 +41,25 @@ ANDROID_HOME=<sdk> ./build.sh      # build-tools 36 conseillé (d8 34 plantait),
 
 ## Installer sur une TV (Windows)
 
-Double-clic sur `FrontEndTV-Installateur.exe` (un seul fichier, l'APK est dedans). La fenêtre propose l'adresse de la
-TV (celle de la dernière fois, sinon recherche du port 5555 sur le réseau local), prénom, pays, clé TMDB (vide : la
-TV garde la sienne), puis le bouton **Installer FrontEndTV**. Le programme (`Engine.cs`) :
-1. trouve `adb` (ou télécharge les platform-tools officiels de Google dans `%LOCALAPPDATA%\FrontEndTV`) ;
+Double-clic sur `FrontEndTV-Installateur.exe` (un seul fichier, l'APK est dedans, aucun outil externe : il parle ADB
+lui-même, `Adb.cs`). La fenêtre cherche la TV (celle de la dernière fois, sinon le port 5555 sur le réseau local, de
+nouveau toutes les 4 s tant que rien ne répond) ; dès qu'elle est trouvée, l'installation démarre seule après un compte
+à rebours (4 s, ou 8 s la première fois) qui s'arrête si on touche à un champ (prénom, pays, clé TMDB — vide : la TV
+garde la sienne). Le programme (`Engine.cs`) :
+1. crée une fois la clé ADB de ce PC (`%LOCALAPPDATA%\FrontEndTV\cle-adb.xml`) ;
 2. se connecte (l'utilisateur accepte « Autoriser le débogage USB ? » sur la TV) ;
-3. compare l'empreinte SHA-256 de l'APK installé : `adb install -r` seulement s'il a changé ; autorise le démarrage
-   en arrière-plan (TCL) ;
+3. compare l'empreinte SHA-256 de l'APK installé : il n'envoie l'APK (`exec:cmd package install -r -S`) que s'il a
+   changé ; autorise le démarrage en arrière-plan (TCL) ;
 4. envoie prénom / pays / clé TMDB et lance la bascule :
    `am start -n io.freemytv/.SettingsActivity --es switch free --es tmdb_region FR --es user_name 'Florian' --es tmdb_key '…'`
 5. attend la confirmation avec `cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME`,
    puis appuie sur Accueil. Le second « Autoriser le débogage USB ? » (celui de l'appli) est repéré tout seul
    (`dumpsys window`, Android 11+) ; sur Android 8–10, il se déconnecte pendant ce message (sinon la réponse peut aller
    au PC) et affiche un bouton « C'est fait » (ou continue seul après 45 s).
+
+Affichage : polices en pixels et tout à la même échelle (DPI de l'écran, réduite si la fenêtre ne tient pas en
+hauteur) ; textes dessinés avec leur couleur de fond (ClearType net) ; formes arrondies remplies avec lissage (pas de
+`SetClip`, qui fait des escaliers).
 
 Lien « Remettre l'écran d'accueil d'origine » : `--es switch original`. Options en ligne de commande : `-Ip`, `-Name`,
 `-Region`, `-Key`, `-Apk`, `-Original`, `-Auto` (lance tout de suite). Journal (clé TMDB masquée) :
