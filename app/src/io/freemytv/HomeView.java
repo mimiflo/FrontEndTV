@@ -3869,7 +3869,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - The TV button: a violet pill with the TV icon and its name, next to the round buttons
 
     private static final float TV_ICON = 32;
-    private static final int TV_VIOLET = 0xFF7B5CF0, TV_LILAC = 0xFFB9A6FF;   // the icon: violet by day, lilac at night
     private Boolean tvAvailable;   // the TV has a channels app (asked once: it reads the package list)
 
     /** Top button `i` is the TV one (Live TV in Settings > Top Buttons). */
@@ -3891,7 +3890,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     /**
-     * The same glass as the round buttons (light by day, smoked at night), wider, with the TV icon in violet and "TV".
+     * The same glass as the round buttons (light by day, smoked at night), wider, with the TV icon and "TV" in their ink.
      * Focused (the tvOS focus, like the round ones): it grows and turns white, the name in dark ink.
      */
     private void drawTvButton(Canvas c, RectF r, float f) {
@@ -3912,8 +3911,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawRoundRect(cell, rad, rad, fill);
         }
         float icon = TV_ICON * k * s, x = cell.left + 24 * k * s;
-        drawTvGlyph(c, x + icon / 2, cell.centerY(), icon, blend(tone(TV_VIOLET, TV_LILAC), TV_VIOLET, f));
-        lTvLabel.setColor(blend(tone(L_INK, 0xEBFFFFFF), L_INK, f));
+        int ink = blend(tone(L_INK, 0xEBFFFFFF), L_INK, f);   // like the round buttons' icons: white on the dark home screen
+        drawTvGlyph(c, x + icon / 2, cell.centerY(), icon, ink);
+        lTvLabel.setColor(ink);
         lTvLabel.setTextSize(28 * k * s);
         c.drawText(tvLabel(), x + icon + 12 * k * s, cell.centerY() + Ui.halfCap(lTvLabel), lTvLabel);
         lTvLabel.setTextSize(28 * k);

@@ -9,7 +9,7 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | Dossier / fichier | Rôle |
 |---|---|
 | `app/src/io/freemytv/` | Code Java de l'appli (identifiant Android `io.freemytv`, à ne pas changer : les mises à jour en dépendent) |
-| `HomeView.java` | L'écran d'accueil natif (vue unique dessinée à la main, calques `Layer`, ressorts `Spring`, horloge d'animation lissée). Bouton TV : pilule de verre en haut, TV du logo dessinée en vectoriel (`drawTvGlyph`) et « TV » (`drawTvButton`, clé `TOP_LIVE`), focus dessus à l'ouverture, au bouton Accueil et au retour d'une appli (`focusTv`). Heure : chiffres qui roulent à chaque minute (`drawClockText`) |
+| `HomeView.java` | L'écran d'accueil natif (vue unique dessinée à la main, calques `Layer`, ressorts `Spring`, horloge d'animation lissée). Bouton TV : pilule de verre en haut, TV du logo dessinée en vectoriel (`drawTvGlyph`) et « TV », en blanc comme les boutons voisins (`drawTvButton`, clé `TOP_LIVE`), focus dessus à l'ouverture, au bouton Accueil et au retour d'une appli (`focusTv`). Heure : chiffres qui roulent à chaque minute (`drawClockText`) |
 | `SettingsActivity.java` | Écran des réglages (thème violet) : 9 lignes en 3 rubriques (`SECTION_AT`), une phrase sous chacune, l'état (mise à jour, erreur) sous le logo (`drawStatus`), la comparaison dans « Écran d'accueil » ; reçoit aussi les réglages envoyés par l'installateur |
 | `HomeMode.java` / `ModeJob.java` | Bascule « FrontEndTV ⇄ Original » (désactive/réactive les applis du constructeur via l'ADB de la TV) |
 | `HomeApps.java` | Dock (`SHELF`), tiroir, logos extraits des bannières des applis |

@@ -34,7 +34,7 @@ static class BuildInfo {
 }
 EOF
 
-# The app's icon in every size Windows uses (16 to 192 px), for the .exe and its window
+# The app's icon in every size Windows uses (16 to 256 px), for the .exe and its window
 JAVA=java; command -v java >/dev/null || JAVA="$JAVA_HOME/bin/java"
 "$JAVA" installer/MakeIcon.java app/res/drawable-nodpi/icon.png out/app.ico
 # -codepage: Windows' csc otherwise reads the sources in the ANSI code page (the accents). Mono's mcs has no
