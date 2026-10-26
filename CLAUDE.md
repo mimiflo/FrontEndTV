@@ -16,7 +16,8 @@ réponds en français, simplement, et demande avant toute action qui modifie sa 
 | `HomeMode.java` / `ModeJob.java` | Bascule « FrontEndTV ⇄ Original » (désactive/réactive les applis du constructeur via l'ADB de la TV) |
 | `HomeApps.java` | Dock (`SHELF`), tiroir, logos extraits des bannières des applis |
 | `Updater.java` | Mises à jour : cherchées toutes les 30 min (tic de l'accueil ; 5 min après un échec, GitHub limitant à 60 requêtes/h), ligne « Mise à jour » des réglages ; lit la dernière Release GitHub (`Config.UPDATE_REPO`), télécharge `FrontEndTV.apk`, l'installe via l'ADB de la TV (`Adb.install`) |
-| `Recs.java` | Recommandations TMDB (clé : `Prefs.tmdbKey()`, pays : `Prefs.tmdbRegion()`) |
+| `Recs.java` | Recommandations : sans clé sur la TV, les **recos intégrées** (`fetchShared` : `recos/recs/<PAYS>.json` de la branche `recos`, lu sur raw.githubusercontent) ; avec une clé à soi (`Prefs.tmdbKey()`), TMDB directement (`fetchList`). Pays : `Prefs.tmdbRegion()`. `Recs.on` : faux si aucune appli de la TV n'en donne ou pas de liste pour le pays (l'accueil garde la grande horloge) |
+| `tools/make_recs.py` | Prépare les recos intégrées, un fichier par pays (tendances + nouveautés par service, services où c'est dispo, image sans texte), lancé chaque jour par `.github/workflows/recs.yml` avec le secret `TMDB_KEY` (la clé ne quitte pas GitHub), publié en force sur la branche orpheline `recos` |
 | `Prefs.java` | Réglages persistants (prénom, clé TMDB, pays, ville…) |
 | `app/assets/i18n/*.json` | Traductions (clé = texte anglais) |
 | `app/res/drawable-nodpi/` | `icon.png` (512×512) et `banner.png` (1280×720), dessinés par `tools/make_art.py` (`python3 tools/make_art.py`, Pillow ; ne pas retoucher à la main) |
@@ -97,7 +98,7 @@ La TV de test (TCL Smart TV Pro, Mali-G31) affiche à **50 Hz** : 50 images/s es
 
 ## Règles
 
-- Ne jamais publier une clé TMDB, une adresse ou une ville personnelle.
+- Ne jamais publier une clé TMDB, une adresse ou une ville personnelle. La clé des recos intégrées est le secret GitHub `TMDB_KEY`, jamais dans le code.
 - Ne pas modifier les réglages système de la TV sans l'accord du propriétaire.
 - Le dépôt présente FrontEndTV comme le projet de Florian, sans autre source. Seule exception, obligatoire (licence
   MIT) : les lignes de copyright de `LICENSE` et `app/assets/LICENSE.txt` restent telles quelles.

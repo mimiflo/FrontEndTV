@@ -467,14 +467,14 @@ sealed class MainForm : Form, IReport {
         setup.Controls.Add(country);
 
         y += S(80);
-        AddLabel(setup, "Clé TMDB", bold, Palette.Text, S(32), y, S(300), S(22));
+        AddLabel(setup, "Clé TMDB (facultatif)", bold, Palette.Text, S(32), y, S(300), S(22));
         Link(setup, "Obtenir une clé gratuite", S(32), y + S(2), S(W), ContentAlignment.MiddleRight,
                 (s, e) => { Touch(); Open("https://www.themoviedb.org/settings/api"); });
-        key = new Field("facultatif — vide : la TV garde sa clé", scale, body);
+        key = new Field("pas besoin — vide : la TV garde ce qu'elle a", scale, body);
         key.Bounds = new Rectangle(S(32), y + S(26), S(W), S(40));
         key.Value = options.Key;
         setup.Controls.Add(key);
-        AddLabel(setup, "Pour les recommandations de films et séries. Elle reste sur ta TV.", small, Palette.Dim,
+        AddLabel(setup, "Les recommandations sont intégrées : pas besoin de clé pour les avoir.", small, Palette.Dim,
                 S(32), y + S(70), S(W), S(20));
 
         go = new RoundButton(GoText, Palette.Accent, Palette.AccentHover, Color.White, scale);

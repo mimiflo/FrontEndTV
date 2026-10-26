@@ -36,10 +36,12 @@ import java.util.concurrent.Executors;
 /**
  * Home screen picks ("This morning / afternoon / tonight"): what's trending this week plus recent releases, only from
  * the streaming apps installed on the TV (Netflix, Prime Video, Disney+, Max, Apple TV, Okko, Hulu, Paramount+, Peacock,
- * Globoplay...), via TMDB (an open movie database that knows what streams where in each country). Three per hour.
+ * Globoplay...), from TMDB (an open movie database that knows what streams where in each country). Three per hour.
  * "Watch" opens the service's app.
  *
- * Each person uses their own free TMDB key (config.properties "tmdb_key", built into the app). It never goes to the log.
+ * Built in: every day GitHub prepares a list per country (tools/make_recs.py, .github/workflows/recs.yml, with a TMDB
+ * key that stays there) and the TV reads its country's (SHARED): nothing to set up. With a TMDB key of one's own
+ * (the installer's, or config.properties "tmdb_key"), the TV asks TMDB itself, as before. It never goes to the log.
  */
 final class Recs {
     static final class Pick {
@@ -106,6 +108,9 @@ final class Recs {
     /** The errors the settings say in words: TMDB lists none of the TV's apps in region(), or the TV has none we know. */
     static final String NO_APPS = "none of the TV's streaming services are on TMDB";
     static final String NO_KNOWN_APPS = "none of the TV's streaming apps can give picks";
+    static final String NO_SHARED = "no built-in picks for this country";
+    /** The built-in picks: one file per country, on the repository's "recos" branch (refreshed every day). */
+    private static final String SHARED = "https://raw.githubusercontent.com/" + Config.UPDATE_REPO.trim() + "/recos/recs/";
 
     private static Recs instance;
 
@@ -143,19 +148,31 @@ final class Recs {
             keyStamp = cache.getLong("keyStamp", 0);
         } catch (Exception ignored) {
         }
+        error = status(c).optString("error");   // a TV that can't have picks says so from the start (on)
     }
 
     void addListener(Listener l) { if (!listeners.contains(l)) listeners.add(l); }
     void removeListener(Listener l) { listeners.remove(l); }
 
-    static boolean hasKey(Context c) {
+    /** A TMDB key of one's own: the TV asks TMDB itself, instead of reading the built-in picks. */
+    static boolean ownKey() {
         return !Prefs.tmdbKey().isEmpty();
+    }
+
+    /**
+     * The picks are on: always, unless this TV can't have any with the built-in ones (none of its apps gives picks,
+     * or there's no list for its country); then the home screen keeps its big clock. Asked on every frame: no I/O.
+     */
+    static boolean on(Context c) {
+        if (ownKey()) return true;
+        String e = get(c).error;
+        return !(NO_KNOWN_APPS.equals(e) || NO_APPS.equals(e) || NO_SHARED.equals(e));
     }
 
     /** Last fetch, for the settings screen: {count, error, at}. Written by the home screen (another process). */
     static JSONObject status(Context c) {
         File f = new File(c.getFilesDir(), "recs-status.json");
-        if (!f.exists() || !hasKey(c)) return new JSONObject();
+        if (!f.exists()) return new JSONObject();
         try (FileInputStream in = new FileInputStream(f)) {
             return new JSONObject(read(in));
         } catch (Exception e) {
@@ -193,7 +210,6 @@ final class Recs {
     /** This hour's 3, movies only ("movie") or shows only ("tv"); null = both (the home screen tabs). */
     List<Pick> now(String kind) {
         List<Pick> list = new ArrayList<>();
-        if (!hasKey(context)) return list;    // no TMDB key: no recommendations
         Map<String, Boolean> have = new HashMap<>();   // one look per app, not per title (this runs every 15 s)
         for (Pick p : picks) {
             if ((kind == null || kind.equals(p.kind))
@@ -251,9 +267,9 @@ final class Recs {
         return new File(new File(context.getCacheDir(), "recs"), p.backdrop.replace("/", ""));
     }
 
-    /** With a key: fetches the list if stale or the time of day (morning/afternoon/night) changed; then the details. */
+    /** Fetches the list if stale or the time of day (morning/afternoon/night) changed; then the details. */
     void refreshIfStale() {
-        if (!hasKey(context) || fetching) return;
+        if (fetching) return;
         long now = System.currentTimeMillis();
         long stamp = sourceStamp();   // a new key, country, animation choice or installed streaming-app set refetches
         boolean newKey = stamp != keyStamp;
@@ -269,7 +285,9 @@ final class Recs {
         fetching = true;
         io.execute(() -> {
             try {
-                if (stale) fetchList(p);
+                if (stale) {
+                    if (ownKey()) fetchList(p); else fetchShared(p);
+                }
                 // One failing title doesn't stop the others; whatever has no app on the TV is not downloaded.
                 int failures = 0, tried = 0;
                 String last = "";
@@ -315,7 +333,6 @@ final class Recs {
      */
     List<Pick> showcase() {
         List<Pick> out = new ArrayList<>();
-        if (!hasKey(context)) return out;
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (Pick p : wanted()) if (hasImage(p) && seen.add(franchise(p.title))) out.add(p);
         Map<String, Boolean> have = new HashMap<>();
@@ -336,7 +353,7 @@ final class Recs {
      * time in the background, so it has more photos. Not used otherwise.
      */
     void prefetchAll() {
-        if (!hasKey(context) || fetching) return;
+        if (fetching) return;
         long sinceFail = System.currentTimeMillis() - failedAt;
         if (failedAt != 0 && sinceFail >= 0 && sinceFail < 10 * 60_000L) return;
         List<Pick> todo = new ArrayList<>();
@@ -497,20 +514,9 @@ final class Recs {
         p.title = title(p, o);
         String best = bestBackdrop(o.optJSONObject("images"));
         if (best != null) p.backdrop = best;
-        List<String> parts = new ArrayList<>();
         JSONArray genres = o.optJSONArray("genres");
-        if (p.kind.equals("tv")) parts.add(Ui.tr("Series"));
-        if (genres != null && genres.length() > 0) {
-            String name = genres.getJSONObject(0).optString("name");
-            parts.add(genre(name));
-        }
-        if (p.kind.equals("movie")) {
-            int minutes = o.optInt("runtime");
-            if (minutes > 0) parts.add(minutes >= 60 ? Ui.trf("{h}h {m}m", "h", minutes / 60, "m", minutes % 60) : Ui.trf("{m}m", "m", minutes));
-        } else {
-            int seasons = o.optInt("number_of_seasons");
-            if (seasons > 0) parts.add(Ui.plural("plural|one:{n} season|other:{n} seasons", seasons));
-        }
+        String genre = genres != null && genres.length() > 0 ? genres.getJSONObject(0).optString("name") : "";
+        int length = p.kind.equals("movie") ? o.optInt("runtime") : o.optInt("number_of_seasons");
         JSONObject wp = o.optJSONObject("watch/providers");
         JSONObject br = wp == null ? null : wp.optJSONObject("results") == null ? null : wp.optJSONObject("results").optJSONObject(region());
         JSONArray flat = br == null ? null : br.optJSONArray("flatrate");
@@ -521,9 +527,81 @@ final class Recs {
                 p.pkg = s[2];
             }
         }
-        if (p.app != null) parts.add(SERVICE_NAME.get(p.app));
-        p.meta = String.join(" · ", parts);
+        p.meta = meta(p, genre, length);
         p.detailed = true;
+    }
+
+    /** "Series · Drama · 3 seasons · Netflix", "Thriller · 2h 5m · Prime Video": what's known of it. */
+    private static String meta(Pick p, String genre, int length) {
+        List<String> parts = new ArrayList<>();
+        if (p.kind.equals("tv")) parts.add(Ui.tr("Series"));
+        if (!genre.isEmpty()) parts.add(genre(genre));
+        if (length > 0) {
+            parts.add(p.kind.equals("movie") ? (length >= 60 ? Ui.trf("{h}h {m}m", "h", length / 60, "m", length % 60) : Ui.trf("{m}m", "m", length))
+                    : Ui.plural("plural|one:{n} season|other:{n} seasons", length));
+        }
+        if (p.app != null) parts.add(SERVICE_NAME.get(p.app));
+        return String.join(" · ", parts);
+    }
+
+    // MARK: - The built-in picks (prepared on GitHub)
+
+    /**
+     * Without a key of one's own: the country's list, prepared every day on GitHub (tools/make_recs.py), already with
+     * everything a card shows; the ones on an app of this TV, in the list's order (trending first), up to 24.
+     */
+    private void fetchShared(int p) throws Exception {
+        boolean any = false;
+        for (String[] s : SERVICES) any |= installed(s[2]);
+        if (!any) throw new IOException(NO_KNOWN_APPS);
+        HttpURLConnection c = (HttpURLConnection) new URL(SHARED + region() + ".json").openConnection();
+        c.setConnectTimeout(8000);
+        c.setReadTimeout(15000);
+        JSONArray titles;
+        try {
+            int code = c.getResponseCode();
+            if (code == 404) throw new IOException(NO_SHARED);
+            if (code != 200) throw new IOException("GitHub returned HTTP " + code);
+            titles = new JSONObject(read(c.getInputStream())).getJSONArray("titles");
+        } finally {
+            c.disconnect();
+        }
+        List<Pick> list = shared(titles);
+        if (list.isEmpty()) throw new IOException(NO_APPS);
+        picks = list;
+        period = p;
+        listAt = System.currentTimeMillis();
+        listLanguage = Ui.language;
+    }
+
+    /** The list's titles on an app of this TV (and not animated, with hide_animation), in its order, up to 24. */
+    private List<Pick> shared(JSONArray titles) throws org.json.JSONException {
+        List<Pick> list = new ArrayList<>();
+        for (int i = 0; i < titles.length() && list.size() < 24; i++) {
+            JSONObject o = titles.getJSONObject(i);
+            if (Config.HIDE_ANIMATION && o.optBoolean("animation")) continue;
+            String[] on = null;
+            JSONArray services = o.optJSONArray("services");
+            for (int j = 0; services != null && j < services.length() && on == null; j++) on = installedService(services.optString(j));
+            if (on == null || o.optString("backdrop").isEmpty()) continue;
+            Pick pick = new Pick();
+            pick.id = o.optInt("id");
+            pick.kind = o.optString("kind");
+            pick.title = o.optString("title");
+            pick.backdrop = o.optString("backdrop");
+            pick.app = on[1];
+            pick.pkg = on[2];
+            pick.meta = meta(pick, o.optString("genre"), o.optInt("length"));
+            pick.detailed = true;
+            list.add(pick);
+        }
+        return list;
+    }
+
+    /** The SERVICES row for an app key ("netflix") whose app is on the TV, or null. */
+    private String[] installedService(String app) {
+        for (String[] s : SERVICES) if (s[1].equals(app) && installed(s[2])) return s;
+        return null;
     }
 
     /**

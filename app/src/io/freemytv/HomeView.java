@@ -3462,7 +3462,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         for (Recs.Pick p : recs.wanted()) recs.backdrop(p);   // all three tabs preloaded: switching tabs is instant
-        // Picks bring their own background; without them (no TMDB key), your photo if there is one.
+        // Picks bring their own background; without them (none of the TV's apps gives picks), your photo if there is one.
         boolean own = !picksOn() && Photos.on(getContext());
         Backdrop b = own ? Photos.backdrop(getContext(), ownReady) : cards.isEmpty() ? null : recs.backdrop(cards.get(Math.min(bgIndex, cards.size() - 1)));
         if (b != null || (cards.isEmpty() && !own)) showBackdrop(b);
@@ -3678,7 +3678,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private boolean picksOn() {
-        return Recs.hasKey(getContext());
+        return Recs.on(getContext());
     }
 
     private static final float CLOCK_ROLL_MS = 650;

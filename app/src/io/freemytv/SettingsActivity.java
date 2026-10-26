@@ -185,7 +185,7 @@ public class SettingsActivity extends Activity {
         private String cityStatus = "";
         private final RectF tmp = new RectF(), rowRect = new RectF(), focusBox = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
-        private boolean hasKey;
+        private boolean picksOn;   // the home screen has picks (TMDB data: its credit shows)
         private int screen = MAIN, focus;
         private boolean running, okDown, backDown, wasBusy;
         private Toast whyToast;   // why the focused option is unavailable
@@ -218,7 +218,7 @@ public class SettingsActivity extends Activity {
                     if (!inSide && focus >= mainRows()) focus = mainRows() - 1;   // the list got shorter
                     wifiScroll = Math.max(0, Math.min(wifiScroll, wifiList() - (mainRows() - 1)));
                 }
-                hasKey = Recs.hasKey(getContext());
+                picksOn = Recs.on(getContext());
                 recs = Recs.status(getContext());
                 boolean nowBusy = !busyText().isEmpty();
                 if (nowBusy) pendingAt = 0;
@@ -1084,7 +1084,7 @@ public class SettingsActivity extends Activity {
                     c.drawCircle(r.right - 26 * k, cy, 7 * k, dot);
                 }
             }
-            if (hasKey) {   // TMDB asks for its credit where its picks show
+            if (picksOn) {   // TMDB asks for its credit where its picks show
                 String credit = Ui.tr("This product uses the TMDB API but is not endorsed or certified by TMDB.");
                 float w = (SIDE_W - 88) * k;
                 int n = creditPaint.breakText(credit, true, w, null);

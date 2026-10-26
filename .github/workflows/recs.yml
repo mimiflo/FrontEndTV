@@ -1,0 +1,44 @@
+# Les recommandations intégrées : chaque jour, tools/make_recs.py prépare un fichier par pays (recs/FR.json, BE.json…)
+# avec ce qui est tendance et les nouveautés de chaque service (Netflix, Prime Video, Disney+…), et les publie sur la
+# branche « recos ». Les TV le lisent là (Recs.java) : aucune clé sur la TV, rien à régler.
+#
+# La clé TMDB est le secret TMDB_KEY (Settings → Secrets and variables → Actions) : elle ne quitte jamais GitHub.
+name: Recommandations
+
+on:
+  schedule:
+    - cron: "17 4 * * *"   # chaque jour vers 4 h 17 (UTC)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [tools/make_recs.py, .github/workflows/recs.yml]
+
+permissions:
+  contents: write
+
+concurrency: recs
+
+jobs:
+  recs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Préparer les fichiers
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+        run: python3 tools/make_recs.py out/recs
+      - name: Publier sur la branche recos
+        run: |
+          if [ ! -d out/recs ] || [ -z "$(ls out/recs)" ]; then echo "Rien à publier."; exit 0; fi
+          cd out/recs
+          cat > README.md <<'EOF'
+          Recommandations intégrées de FrontEndTV, refaites chaque jour par .github/workflows/recs.yml (données TMDB).
+          Ce produit utilise l'API TMDB sans être approuvé ni certifié par TMDB.
+          EOF
+          mkdir -p recs && mv *.json recs/
+          git init -q -b recos
+          git config user.name "FrontEndTV"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Recommandations du $(date -u +%F)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" recos

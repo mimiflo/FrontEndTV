@@ -53,8 +53,8 @@ Il faut une **Google TV ou Android TV** (Android 8 ou plus récent) et un **PC W
      faut encore activer le débogage ; il choisit seul celle de la dernière fois (ou la seule prête) et
      **démarre l'installation automatiquement** après quelques secondes ;
    - parle directement à la TV : rien d'autre à télécharger ni à installer, même pas les outils Android ;
-   - installe l'appli (ou la met à jour ; rien à faire si elle est déjà à jour), envoie ton prénom, ton pays et ta
-     clé TMDB (facultatifs) ;
+   - installe l'appli (ou la met à jour ; rien à faire si elle est déjà à jour), envoie ton prénom et ton pays
+     (facultatifs) ;
    - **active FrontEndTV comme écran d'accueil**, attend la confirmation et l'ouvre sur la TV.
 
    Sur la TV, accepte **« Autoriser le débogage USB ? »** en cochant *Toujours autoriser* : une fois pour le PC, et
@@ -69,12 +69,15 @@ Il faut une **Google TV ou Android TV** (Android 8 ou plus récent) et un **PC W
 > Sur Android 14, Google Play Protect peut afficher « Appli à risque bloquée » : *Plus de détails → Installer quand même*.
 > Sur une Chromecast avec Google TV (Android 14), active aussi *Débogage sans fil* dans les options pour les développeurs.
 
-### La clé TMDB (pour les recommandations)
+### Les recommandations (intégrées, sans clé)
 
-Gratuite : crée un compte sur [themoviedb.org](https://www.themoviedb.org/signup), puis
-[Paramètres → API](https://www.themoviedb.org/settings/api) et demande une clé développeur. Copie le
-*Jeton d'accès en lecture à l'API* (ou la *Clé d'API*) quand l'installateur la demande. Elle reste sur ta TV.
-Sans clé, l'accueil fonctionne, sans les recommandations.
+Rien à faire : chaque jour, GitHub prépare la liste des films et séries tendance et des nouveautés de chaque service
+(Netflix, Prime Video, Disney+…) pour chaque pays, et la TV lit celle de ton pays. Elle ne garde que ce qui est sur
+les applis installées.
+
+Une clé TMDB à toi reste possible (facultatif) : la TV demande alors elle-même à TMDB. Gratuite : crée un compte sur
+[themoviedb.org](https://www.themoviedb.org/signup), puis [Paramètres → API](https://www.themoviedb.org/settings/api) ;
+colle le *Jeton d'accès en lecture à l'API* (ou la *Clé d'API*) dans l'installateur. Elle reste sur ta TV.
 
 Pour changer de clé, de pays ou de prénom plus tard, relance simplement l'installateur (clé vide : la TV garde la sienne).
 
@@ -111,6 +114,8 @@ outil externe ; `Discovery.cs` : la recherche des TV).
   signées avec la même clé, sinon il faut désinstaller avant de réinstaller.
 - Les textes sont dans `app/assets/i18n/`, les applis du dock dans `SHELF` (`app/src/io/freemytv/HomeApps.java`),
   l'accueil dans `HomeView.java`.
+- Les recommandations intégrées : `tools/make_recs.py`, lancé chaque jour par `.github/workflows/recs.yml` avec la
+  clé TMDB gardée dans le secret `TMDB_KEY` du dépôt ; les fichiers par pays sont sur la branche `recos`.
 
 ## Crédits
 
