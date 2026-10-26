@@ -1533,7 +1533,14 @@ sealed class Picker : Control {
             box.SelectedIndex = selected;
             box.TopIndex = Math.Max(0, selected - rows / 2);
         }
-        drop.Show(this, new Point(0, Height + (int) (4 * scale)));
+        // Sous le champ, ou au-dessus s'il n'y a pas la place (petit écran, barre des tâches)
+        int gap = (int) (4 * scale), listH = box.Height + 2;
+        Rectangle area = Screen.FromControl(this).WorkingArea;
+        if (PointToScreen(new Point(0, Height + gap)).Y + listH > area.Bottom) {
+            drop.Show(this, new Point(0, -gap), ToolStripDropDownDirection.AboveRight);
+        } else {
+            drop.Show(this, new Point(0, Height + gap));
+        }
         box.Focus();
         Invalidate();
     }

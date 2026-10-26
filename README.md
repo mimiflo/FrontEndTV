@@ -11,14 +11,33 @@ Développé par Florian.
   disponibles sur tes applis (onglets *Pour toi*, *Films*, *Séries*), avec le fond qui suit la carte sélectionnée.
 - **Dock d'applis** en verre translucide, avec les vrais logos (Netflix, YouTube, Prime Video, Disney+…).
 - **Tiroir du bas** : entrées HDMI, *Toutes les apps*, réglages, et la météo heure par heure.
+- **Bouton TV** bien visible en haut : la sélection s'y place à l'ouverture, pour passer à la télé d'un appui.
+  L'heure change avec une petite animation à chaque minute.
 - **Réglages de la TV** en un clic (l'engrenage en haut à droite).
+- **Touches de la télécommande** (Netflix, YouTube…) : reconnues toutes seules, même sur les marques que FrontEndTV ne
+  connaît pas (Philips…), et réglables pour ouvrir l'appli de ton choix.
 - Pensé pour les petites puces des TV : animations calées sur l'écran, seules les zones qui bougent sont redessinées.
 - Retire les applis publicitaires du constructeur (sans les désinstaller) et remplace l'économiseur d'écran.
   Tout revient comme avant en un clic (*Écran d'accueil* → *Original*).
 
-| Toutes les apps | Réglages |
+| Toutes les apps | Réglages de FrontEndTV |
 |---|---|
 | ![Toutes les apps](.github/captures/toutes-les-apps.jpg) | ![Réglages](.github/captures/reglages.jpg) |
+
+### Les réglages de FrontEndTV
+
+Rangés par catégories à gauche (*Écran d'accueil*, *Économiseur d'écran*, *Télécommande et veille*, *Wi-Fi*,
+*TV et mises à jour*) : à droite, seulement ceux de la catégorie choisie, chacun avec une phrase qui dit à quoi il sert.
+
+- **Wi-Fi** : le réseau de la TV et ceux autour ; OK sur un réseau, puis le mot de passe tapé à la télécommande
+  (Android 11 ou plus récent). L'icône Wi-Fi en haut à droite y mène aussi.
+- **Économiseur d'écran → Éteindre l'écran** : la TV se met en veille au lieu de laisser l'économiseur allumé
+  (tout de suite, ou après 5, 10, 15, 30 min ou 1 h).
+- **Minuterie de veille**, applis du dock, boutons du haut, langue, météo, photos…
+
+| Wi-Fi | Économiseur d'écran |
+|---|---|
+| ![Wi-Fi](.github/captures/wifi.jpg) | ![Économiseur d'écran](.github/captures/economiseur.jpg) |
 
 ## Installation automatique (Windows, 5 minutes)
 
@@ -27,10 +46,11 @@ Il faut une **Google TV ou Android TV** (Android 8 ou plus récent) et un **PC W
 1. **Sur la TV** (une seule fois)
    - *Paramètres → Système → À propos* : appuie **7 fois** sur *Build* (message « Vous êtes développeur »).
    - *Paramètres → Système → Options pour les développeurs* : active **Débogage USB**.
-2. **Sur le PC** : télécharge **`FrontEndTV-Installateur.exe`** dans [Releases](../../releases). Un seul fichier :
-   l'appli est dedans.
-3. Double-clique dessus. Il fait tout, seul (tu peux remplir ton prénom et ta clé TMDB avant que ça démarre) :
-   - **trouve la TV tout seul** (celle de la dernière fois, sinon il cherche sur le réseau, en continu) et
+2. **Sur le PC** : télécharge **`FrontEndTV-Installateur.exe`** dans [Releases](../../releases). Un seul fichier,
+   rien d'autre à installer.
+3. Double-clique dessus. Il fait tout, seul (tu peux remplir ton prénom, ton pays et ta clé TMDB avant que ça démarre) :
+   - **liste les TV de ton réseau** avec leur nom, leur marque et leur modèle, et dit si chacune est *Prête* ou s'il
+     faut encore activer le débogage ; il choisit seul celle de la dernière fois (ou la seule prête) et
      **démarre l'installation automatiquement** après quelques secondes ;
    - parle directement à la TV : rien d'autre à télécharger ni à installer, même pas les outils Android ;
    - installe l'appli (ou la met à jour ; rien à faire si elle est déjà à jour), envoie ton prénom, ton pays et ta
@@ -39,6 +59,8 @@ Il faut une **Google TV ou Android TV** (Android 8 ou plus récent) et un **PC W
 
    Sur la TV, accepte **« Autoriser le débogage USB ? »** en cochant *Toujours autoriser* : une fois pour le PC, et
    la première fois une seconde pour FrontEndTV. L'installateur te dit quand.
+
+![L'installateur : l'ouverture, le choix de la TV, l'installation](.github/captures/installateur.png)
 
 > Windows peut afficher « Windows a protégé votre ordinateur » (l'installateur n'est pas signé) : *Informations
 > complémentaires → Exécuter quand même*. L'installateur a besoin d'Internet la première fois : il télécharge l'appli
@@ -58,8 +80,9 @@ Pour changer de clé, de pays ou de prénom plus tard, relance simplement l'inst
 
 ## Mettre à jour
 
-Sur la TV : ouvre **FrontEndTV** (l'engrenage de l'accueil) → **Mise à jour**. S'il y a une nouvelle version, elle est
-affichée ; **OK** la télécharge et l'installe toute seule. FrontEndTV vérifie aussi de lui-même toutes les 6 heures.
+Sur la TV : ouvre **FrontEndTV** (l'engrenage de l'accueil) → **TV et mises à jour** → **Mise à jour**. S'il y a une
+nouvelle version, elle est affichée (avec un point orange à côté de la catégorie) ; **OK** la télécharge et l'installe
+toute seule. FrontEndTV vérifie aussi de lui-même toutes les 30 minutes.
 
 ## Revenir en arrière
 
@@ -69,7 +92,7 @@ applis désactivées reviennent exactement comme avant. Pour désinstaller : pas
 
 ## Compiler soi-même
 
-Il faut un JDK 17+, les outils Android en ligne de commande (build-tools 34 ou plus, platform android-34) et adb.
+Il faut un JDK 17+, les outils Android en ligne de commande (build-tools 36 conseillé, platform android-34) et adb.
 Sous Windows, utilise Git Bash ou WSL.
 
 ```bash
@@ -78,9 +101,10 @@ adb connect 192.168.1.50:5555
 adb install -r FrontEndTV.apk
 ```
 
-Sous Windows, `build.sh` crée aussi **`FrontEndTV-Installateur.exe`** (avec l'APK dedans) grâce au compilateur C#
-fourni avec Windows ; ailleurs, il faut Mono (`mcs`). Le code de l'installateur est dans `installer/` (`Adb.cs` : son
-propre client ADB, pour ne dépendre d'aucun outil externe).
+Sous Windows, `build.sh` crée aussi **`FrontEndTV-Installateur.exe`** grâce au compilateur C# fourni avec Windows ;
+ailleurs, il faut Mono (`mcs`). L'installateur prend `FrontEndTV.apk` à côté de lui, ou télécharge celui de sa version
+et vérifie son empreinte. Son code est dans `installer/` (`Adb.cs` : son propre client ADB, pour ne dépendre d'aucun
+outil externe ; `Discovery.cs` : la recherche des TV).
 
 - `config.properties` (clé TMDB, ville, pays, prénom…) et `freemytv.keystore` (la clé de signature créée au premier
   build) restent sur ton PC : ils sont exclus de Git. **Garde `freemytv.keystore`** : les mises à jour doivent être
