@@ -1898,6 +1898,7 @@ sealed class Dialog : Form {
         int bw = (int) (136 * scale), bh = (int) (44 * scale), gap = (int) (12 * scale);
         Font buttons = new Font("Segoe UI Semibold", 14.5f * scale, GraphicsUnit.Pixel);
         yes = new RoundButton(yesText, Palette.Accent, Palette.AccentHover, Color.White, scale);
+        yes.Gradient = true;
         yes.Font = buttons;
         yes.Bounds = new Rectangle(w - pad - bw, bottom, bw, bh);
         yes.Click += (s, e) => Done(true);
