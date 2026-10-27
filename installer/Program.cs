@@ -70,8 +70,11 @@ static class Program {
                     + (e == null ? "?" : e.ToString()) + Environment.NewLine);
         } catch (Exception) {}
         if (!quiet) try {
-            MessageBox.Show("L'installateur a rencontré une erreur :\n\n" + (e == null ? "?" : e.Message)
-                    + "\n\nLes détails sont dans :\n" + file, "FrontEndTV", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            string what = (e == null ? "?" : e.Message) + "\n\nLes détails sont dans :\n" + file;
+            try { Dialog.Tell(null, "L'installateur a rencontré une erreur", what, Tone.Error); }
+            catch (Exception) {   // même la fenêtre du message ne s'ouvre pas : celle de Windows
+                MessageBox.Show("L'installateur a rencontré une erreur :\n\n" + what, "FrontEndTV", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         } catch (Exception) {}
         Environment.Exit(1);
     }
@@ -128,6 +131,61 @@ static class Palette {
     public static Color Mix(Color under, Color top, int alpha) {
         return Color.FromArgb(under.R + (top.R - under.R) * alpha / 255, under.G + (top.G - under.G) * alpha / 255,
                 under.B + (top.B - under.B) * alpha / 255);
+    }
+
+    /** L'échelle de l'écran (1 à 100 %), celle de la fenêtre principale ; d'après l'écran avant elle. */
+    public static float Scale = ScreenScale();
+
+    static float ScreenScale() {
+        try { using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) return Math.Max(1f, g.DpiX / 96f); }
+        catch (Exception) { return 1f; }
+    }
+
+    /**
+     * Une fenêtre aux couleurs du thème : barre de titre sombre (Windows 10 et 11) et, sur Windows 11, de la couleur
+     * du fond, avec un liseré et un titre assortis. Ailleurs, rien ne change.
+     */
+    public static void Theme(Form f) {
+        try {
+            int on = 1;
+            if (DwmSetWindowAttribute(f.Handle, 20, ref on, 4) != 0) DwmSetWindowAttribute(f.Handle, 19, ref on, 4);
+            int caption = ColorRef(Back), border = ColorRef(Border), title = ColorRef(Text);
+            DwmSetWindowAttribute(f.Handle, 35, ref caption, 4);
+            DwmSetWindowAttribute(f.Handle, 34, ref border, 4);
+            DwmSetWindowAttribute(f.Handle, 36, ref title, 4);
+        } catch (Exception) {}   // pas Windows (essais), ou Windows trop ancien
+    }
+
+    static int ColorRef(Color c) { return c.R | c.G << 8 | c.B << 16; }
+
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    /** Le menu du clic droit d'un champ (couper, copier, coller, tout sélectionner), dans le thème. */
+    public static ContextMenuStrip TextMenu(TextBox box, Font font, float scale) {
+        var menu = new ContextMenuStrip();
+        menu.Renderer = new DarkRenderer(Border);
+        menu.ShowImageMargin = false;
+        menu.Font = font;
+        menu.Padding = new Padding((int) (3 * scale));
+        Func<string, string, EventHandler, ToolStripMenuItem> item = (text, keys, click) => {
+            var i = new ToolStripMenuItem(text, null, click);
+            i.ShortcutKeyDisplayString = keys;
+            i.Padding = new Padding((int) (6 * scale), (int) (5 * scale), (int) (6 * scale), (int) (5 * scale));
+            menu.Items.Add(i);
+            return i;
+        };
+        ToolStripMenuItem cut = item("Couper", "Ctrl+X", (s, e) => box.Cut()), copy = item("Copier", "Ctrl+C", (s, e) => box.Copy()),
+                paste = item("Coller", "Ctrl+V", (s, e) => box.Paste());
+        menu.Items.Add(new ToolStripSeparator());
+        ToolStripMenuItem all = item("Tout sélectionner", "Ctrl+A", (s, e) => { box.Focus(); box.SelectAll(); });
+        menu.Opening += (s, e) => {
+            cut.Enabled = copy.Enabled = box.SelectionLength > 0;
+            bool text = false;
+            try { text = Clipboard.ContainsText(); } catch (Exception) {}
+            paste.Enabled = text;
+            all.Enabled = box.TextLength > 0;
+        };
+        return menu;
     }
 
     /** Une TV (écran arrondi et pied) au milieu de `r`, comme celle du logo. */
@@ -197,6 +255,7 @@ sealed class MainForm : Form, IReport {
         float forced;
         if (float.TryParse(Environment.GetEnvironmentVariable("FRONTENDTV_SCALE") ?? "", System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out forced) && forced >= 0.75f && forced <= 3) scale = forced;
+        Palette.Scale = scale;   // les fenêtres de message à la même échelle
         // Polices en pixels, à la même échelle que tout le reste : rien ne déborde ni ne s'étire
         body = Px(14f, false);
         small = Px(12.5f, false);
@@ -256,7 +315,7 @@ sealed class MainForm : Form, IReport {
     protected override void OnHandleCreated(EventArgs e) {
         base.OnHandleCreated(e);
         // Barre de titre sombre (Windows 10 20H1+ et 11)
-        try { int on = 1; DwmSetWindowAttribute(Handle, 20, ref on, 4); } catch (Exception) {}
+        Palette.Theme(this);
     }
 
     protected override void OnShown(EventArgs e) {
@@ -319,6 +378,7 @@ sealed class MainForm : Form, IReport {
                     intro.Save(Path.Combine(dir, stem + "-intro.png"), System.Drawing.Imaging.ImageFormat.Png);
                 }
             }
+            Dialog.Snapshot(this, Path.Combine(dir, stem + "-question.png"));
             country.OpenList();   // le menu des pays, ouvert
             Application.DoEvents();
             Snapshot(Path.Combine(dir, stem + "-pays.png"), true);
@@ -484,8 +544,8 @@ sealed class MainForm : Form, IReport {
         setup.Controls.Add(go);
         Link(setup, "Remettre l'écran d'accueil d'origine", S(32), go.Bottom + S(12), S(W), ContentAlignment.MiddleCenter, (s, e) => {
             Touch();
-            if (MessageBox.Show(this, "Remettre l'écran d'accueil d'origine de la TV ?\nLes applis mises de côté reviennent comme avant.",
-                    "FrontEndTV", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK) Start(true);
+            if (Dialog.Ask(this, "Remettre l'écran d'accueil d'origine ?", "Les applis mises de côté reviennent comme avant. "
+                    + "FrontEndTV reste installé : tu pourras y revenir.", "Remettre", "Annuler")) Start(true);
         });
         AddLabel(setup, "par Florian", small, Color.FromArgb(110, 104, 132),
                 S(32), go.Bottom + S(38), S(W), S(20)).TextAlign = ContentAlignment.MiddleCenter;
@@ -749,14 +809,13 @@ sealed class MainForm : Form, IReport {
 
     protected override void OnFormClosing(FormClosingEventArgs e) {
         if (worker != null && worker.IsAlive && e.CloseReason == CloseReason.UserClosing
-                && MessageBox.Show(this, "L'installation est en cours. Arrêter ?", "FrontEndTV",
-                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) {
+                && !Dialog.Ask(this, "L'installation est en cours. Arrêter ?", "Ce qui est déjà fait sur la TV y reste ; "
+                        + "tu pourras relancer l'installateur ensuite.", "Arrêter", "Continuer")) {
             e.Cancel = true;
         }
         base.OnFormClosing(e);
     }
 
-    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }
 
 // MARK: - Petits éléments dessinés à la main
@@ -842,6 +901,7 @@ sealed class Field : Control {
         Box.HandleCreated += (s, e) => {
             try { SendMessage(Box.Handle, 0x1501, (IntPtr) 1, cue); } catch (Exception) {}   // texte d'exemple, en gris
         };
+        Box.ContextMenuStrip = Palette.TextMenu(Box, font, scale);   // pas le menu blanc de Windows
         Controls.Add(Box);
         Cursor = Cursors.IBeam;
     }
@@ -1416,7 +1476,6 @@ sealed class Picker : Control {
     readonly Font small;
     int selected = -1;
     ToolStripDropDown drop;
-    ListBox box;
 
     public Picker(float scale, Font font, Font small) {
         this.scale = scale;
@@ -1491,75 +1550,36 @@ sealed class Picker : Control {
 
     public void OpenList() {
         if (Items.Count == 0 || IsOpen) return;
-        int rowH = (int) (32 * scale), rows = Math.Min(9, Items.Count);
-        box = new ListBox();
-        box.DrawMode = DrawMode.OwnerDrawFixed;
-        box.ItemHeight = rowH;
-        box.BorderStyle = BorderStyle.None;
-        box.BackColor = Palette.Field;
-        box.ForeColor = Palette.Text;
-        box.Font = Font;
-        box.IntegralHeight = false;
-        foreach (string[] it in Items) box.Items.Add(it[1]);
-        box.Size = new Size(Width - 2, rows * rowH);
-        box.DrawItem += DrawItem;
-        box.MouseMove += (s, e) => {
-            int i = box.IndexFromPoint(e.Location);
-            if (i >= 0 && i != box.SelectedIndex) box.SelectedIndex = i;
-        };
-        box.MouseClick += (s, e) => { Choose(box.SelectedIndex); CloseList(); };
-        box.KeyDown += (s, e) => {
-            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) { Choose(box.SelectedIndex); CloseList(); e.Handled = true; }
-            else if (e.KeyCode == Keys.Escape) { CloseList(); e.Handled = true; }
-        };
-        box.KeyPress += (s, e) => {
-            int i = Jump(e.KeyChar, box.SelectedIndex);
-            if (i >= 0) box.SelectedIndex = i;
-            e.Handled = true;
-        };
-        box.HandleCreated += (s, e) => { try { SetWindowTheme(box.Handle, "DarkMode_Explorer", null); } catch (Exception) {} };
-        var host = new ToolStripControlHost(box);
+        var list = new ChoiceList(Items, selected, Math.Min(9, Items.Count), scale, Font, small);
+        list.Size = new Size(Width - 2, list.Height);
+        list.Jump = Jump;
+        list.Chosen += (s, e) => { Choose(list.Selected); CloseList(); };
+        list.Cancelled += (s, e) => CloseList();
+        var host = new ToolStripControlHost(list);
         host.Margin = Padding.Empty;
         host.Padding = Padding.Empty;
         host.AutoSize = false;
-        host.Size = box.Size;
+        host.Size = list.Size;
         drop = new ToolStripDropDown();
         drop.Padding = new Padding(1);
-        drop.Renderer = new DarkRenderer();
+        drop.Renderer = new DarkRenderer(Palette.Accent);
         drop.DropShadowEnabled = false;
         drop.Items.Add(host);
         drop.Closed += (s, e) => { Invalidate(); Focus(); };
-        if (selected >= 0) {
-            box.SelectedIndex = selected;
-            box.TopIndex = Math.Max(0, selected - rows / 2);
-        }
         // Sous le champ, ou au-dessus s'il n'y a pas la place (petit écran, barre des tâches)
-        int gap = (int) (4 * scale), listH = box.Height + 2;
+        int gap = (int) (4 * scale), listH = list.Height + 2;
         Rectangle area = Screen.FromControl(this).WorkingArea;
         if (PointToScreen(new Point(0, Height + gap)).Y + listH > area.Bottom) {
             drop.Show(this, new Point(0, -gap), ToolStripDropDownDirection.AboveRight);
         } else {
             drop.Show(this, new Point(0, Height + gap));
         }
-        box.Focus();
+        list.Focus();
         Invalidate();
     }
 
     public void CloseList() {
         if (drop != null) drop.Close();
-    }
-
-    void DrawItem(object sender, DrawItemEventArgs e) {
-        if (e.Index < 0) return;
-        bool on = (e.State & DrawItemState.Selected) != 0;
-        Color back = on ? Palette.Mix(Palette.Field, Palette.Accent, 120) : Palette.Field;
-        using (var b = new SolidBrush(back)) e.Graphics.FillRectangle(b, e.Bounds);
-        int pad = (int) (12 * scale);
-        var r = new Rectangle(e.Bounds.X + pad, e.Bounds.Y, e.Bounds.Width - 2 * pad, e.Bounds.Height);
-        TextRenderer.DrawText(e.Graphics, Items[e.Index][1], Font, r, Palette.Text, back,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
-        TextRenderer.DrawText(e.Graphics, Items[e.Index][0], small, r, on ? Palette.Text : Palette.Dim, back,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Right | TextFormatFlags.NoPadding);
     }
 
     protected override void OnPaint(PaintEventArgs e) {
@@ -1590,18 +1610,313 @@ sealed class Picker : Control {
                 TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
     }
 
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    static extern int SetWindowTheme(IntPtr hWnd, string appName, string idList);
 }
 
-/** Le cadre sombre des menus déroulants. */
+/**
+ * La liste ouverte d'un Picker, dessinée à la main comme le reste (pas de liste ni de barre de défilement de Windows) :
+ * le choix en violet, son code à droite, une barre de défilement fine qu'on peut tirer. Souris, molette et clavier
+ * (flèches, Page préc./suiv., Début, Fin, une lettre, Entrée, Échap).
+ */
+sealed class ChoiceList : Control {
+    public int Selected;
+    public Func<char, int, int> Jump;   // le pays suivant qui commence par cette lettre
+    public event EventHandler Chosen, Cancelled;
+    readonly List<string[]> items;
+    readonly int rows, rowH;
+    readonly float scale;
+    readonly Font small;
+    int top, dragFrom = -1, dragTop;
+
+    public ChoiceList(List<string[]> items, int selected, int rows, float scale, Font font, Font small) {
+        this.items = items; this.rows = rows; this.scale = scale; this.small = small;
+        rowH = (int) (34 * scale);
+        Font = font;
+        Selected = Math.Max(0, selected);
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+        BackColor = Palette.Field;
+        Height = rows * rowH;
+        top = Math.Max(0, Math.Min(items.Count - rows, Selected - rows / 2));
+        Cursor = Cursors.Hand;
+    }
+
+    bool Scrolls { get { return items.Count > rows; } }
+
+    RectangleF Thumb() {
+        float h = Math.Max(24 * scale, Height * rows / (float) items.Count);
+        float y = (Height - h) * top / Math.Max(1, items.Count - rows);
+        return new RectangleF(Width - 9 * scale, y + 2 * scale, 5 * scale, h - 4 * scale);
+    }
+
+    void Show(int i) {
+        Selected = Math.Max(0, Math.Min(items.Count - 1, i));
+        if (Selected < top) top = Selected;
+        if (Selected >= top + rows) top = Selected - rows + 1;
+        Invalidate();
+    }
+
+    protected override bool IsInputKey(Keys k) {
+        return k == Keys.Up || k == Keys.Down || k == Keys.PageUp || k == Keys.PageDown || k == Keys.Home || k == Keys.End
+                || k == Keys.Enter || k == Keys.Escape || k == Keys.Space || base.IsInputKey(k);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e) {
+        switch (e.KeyCode) {
+            case Keys.Up: Show(Selected - 1); break;
+            case Keys.Down: Show(Selected + 1); break;
+            case Keys.PageUp: Show(Selected - rows); break;
+            case Keys.PageDown: Show(Selected + rows); break;
+            case Keys.Home: Show(0); break;
+            case Keys.End: Show(items.Count - 1); break;
+            case Keys.Enter:
+            case Keys.Space: if (Chosen != null) Chosen(this, EventArgs.Empty); break;
+            case Keys.Escape: if (Cancelled != null) Cancelled(this, EventArgs.Empty); break;
+        }
+        e.Handled = true;
+        base.OnKeyDown(e);
+    }
+
+    protected override void OnKeyPress(KeyPressEventArgs e) {
+        int i = Jump != null ? Jump(e.KeyChar, Selected) : -1;
+        if (i >= 0) Show(i);
+        e.Handled = true;
+        base.OnKeyPress(e);
+    }
+
+    protected override void OnMouseWheel(MouseEventArgs e) {
+        top = Math.Max(0, Math.Min(items.Count - rows, top - Math.Sign(e.Delta) * 3));
+        Invalidate();
+        base.OnMouseWheel(e);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e) {
+        if (Scrolls && e.X >= Width - 14 * scale) {   // la barre : on la tire
+            dragFrom = e.Y;
+            dragTop = top;
+            Capture = true;
+        }
+        base.OnMouseDown(e);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e) {
+        if (dragFrom >= 0) {
+            float per = (Height - Thumb().Height) / Math.Max(1, items.Count - rows);
+            top = Math.Max(0, Math.Min(items.Count - rows, dragTop + (int) Math.Round((e.Y - dragFrom) / Math.Max(1f, per))));
+            Invalidate();
+        } else {
+            int i = top + e.Y / rowH;
+            if (i < items.Count && i != Selected && e.X < Width - 14 * scale) { Selected = i; Invalidate(); }
+        }
+        base.OnMouseMove(e);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e) {
+        bool dragged = dragFrom >= 0;
+        dragFrom = -1;
+        Capture = false;
+        if (!dragged && e.X < Width - 14 * scale && top + e.Y / rowH < items.Count && Chosen != null) Chosen(this, EventArgs.Empty);
+        base.OnMouseUp(e);
+    }
+
+    protected override void OnPaint(PaintEventArgs e) {
+        Graphics g = e.Graphics;
+        g.Clear(Palette.Field);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        int pad = (int) (12 * scale), right = (int) ((Scrolls ? 16 : 12) * scale);
+        for (int v = 0; v < rows && top + v < items.Count; v++) {
+            int i = top + v;
+            var row = new Rectangle(0, v * rowH, Width, rowH);
+            Color back = Palette.Field;
+            if (i == Selected) {
+                back = Palette.Mix(Palette.Field, Palette.Accent, 120);
+                using (var path = Palette.Round(new RectangleF(4 * scale, row.Y + 2 * scale, Width - (Scrolls ? 18 : 8) * scale, rowH - 4 * scale), 7 * scale))
+                using (var b = new SolidBrush(back)) g.FillPath(b, path);
+            }
+            var r = new Rectangle(pad, row.Y, Width - pad - right, rowH);
+            TextRenderer.DrawText(g, items[i][1], Font, r, Palette.Text, back,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(g, items[i][0], small, r, i == Selected ? Palette.Text : Palette.Dim, back,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Right | TextFormatFlags.NoPadding);
+        }
+        if (Scrolls) {
+            using (var path = Palette.Round(Thumb(), 2.5f * scale))
+            using (var b = new SolidBrush(dragFrom >= 0 ? Palette.AccentHover : Palette.Border)) g.FillPath(b, path);
+        }
+    }
+}
+
+/** Les menus (liste des pays, clic droit dans un champ) : fond sombre, le choix en violet, un liseré. */
 sealed class DarkRenderer : ToolStripRenderer {
+    readonly Color edge;
+
+    public DarkRenderer(Color edge) { this.edge = edge; }
+
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) {
         using (var b = new SolidBrush(Palette.Field)) e.Graphics.FillRectangle(b, e.AffectedBounds);
     }
 
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e) {
-        using (var pen = new Pen(Palette.Accent)) e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+        using (var pen = new Pen(edge)) e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+    }
+
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) {
+        if (!e.Item.Selected || !e.Item.Enabled) return;
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var path = Palette.Round(new RectangleF(3, 1, e.Item.Width - 6, e.Item.Height - 2), 5))
+        using (var b = new SolidBrush(Palette.Mix(Palette.Field, Palette.Accent, 120))) e.Graphics.FillPath(b, path);
+    }
+
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e) {
+        var item = e.Item as ToolStripMenuItem;
+        bool shortcut = item != null && e.Text == item.ShortcutKeyDisplayString;
+        e.TextColor = !e.Item.Enabled ? Palette.Border : shortcut ? Palette.Dim : Palette.Text;
+        base.OnRenderItemText(e);
+    }
+
+    protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e) {
+        int y = e.Item.Height / 2;
+        using (var pen = new Pen(Palette.Border)) e.Graphics.DrawLine(pen, 8, y, e.Item.Width - 8, y);
+    }
+}
+
+/**
+ * Une question ou un message aux couleurs de l'installateur (les boîtes de Windows sont blanches) : une pastille de
+ * couleur (? ou !), un titre, le texte, un ou deux boutons. Entrée : le bouton violet ; Échap : l'autre.
+ */
+sealed class Dialog : Form {
+    readonly string heading, text;
+    readonly Color tint;
+    readonly char glyph;
+    readonly Font head, body;
+    readonly float scale;
+    readonly RoundButton yes, no;
+    readonly int pad, icon, textX, headH;
+    bool answer;
+
+    Dialog(string heading, string text, string yesText, string noText, Tone tone, float scale) {
+        this.heading = heading; this.text = text; this.scale = scale;
+        tint = Palette.For(tone);
+        glyph = tone == Tone.Info || tone == Tone.Action ? '?' : '!';
+        head = new Font("Segoe UI Semibold", 17f * scale, GraphicsUnit.Pixel);
+        body = new Font("Segoe UI", 14f * scale, GraphicsUnit.Pixel);
+        Text = "FrontEndTV";
+        FormBorderStyle = FormBorderStyle.FixedSingle;
+        MaximizeBox = MinimizeBox = false;
+        ShowInTaskbar = false;
+        ShowIcon = false;
+        StartPosition = FormStartPosition.CenterParent;
+        AutoScaleMode = AutoScaleMode.None;
+        BackColor = Palette.Back;
+        ForeColor = Palette.Text;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        int w = (int) (440 * scale);
+        pad = (int) (26 * scale);
+        icon = (int) (40 * scale);
+        textX = pad + icon + (int) (16 * scale);
+        int textW = w - textX - pad;
+        const TextFormatFlags wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding;
+        headH = TextRenderer.MeasureText(heading, head, new Size(textW, int.MaxValue), wrap).Height;
+        int bodyH = string.IsNullOrEmpty(text) ? 0 : TextRenderer.MeasureText(text, body, new Size(textW, int.MaxValue), wrap).Height;
+        int bottom = pad + Math.Max(icon, headH + (int) (8 * scale) + bodyH) + (int) (26 * scale);
+        int bw = (int) (136 * scale), bh = (int) (44 * scale), gap = (int) (12 * scale);
+        Font buttons = new Font("Segoe UI Semibold", 14.5f * scale, GraphicsUnit.Pixel);
+        yes = new RoundButton(yesText, Palette.Accent, Palette.AccentHover, Color.White, scale);
+        yes.Font = buttons;
+        yes.Bounds = new Rectangle(w - pad - bw, bottom, bw, bh);
+        yes.Click += (s, e) => Done(true);
+        Controls.Add(yes);
+        if (noText != null) {
+            no = new RoundButton(noText, Palette.Field, Palette.Border, Palette.Text, scale);
+            no.Font = buttons;
+            no.Bounds = new Rectangle(yes.Left - gap - bw, bottom, bw, bh);
+            no.Click += (s, e) => Done(false);
+            Controls.Add(no);
+        }
+        ClientSize = new Size(w, bottom + bh + pad);
+    }
+
+    void Done(bool value) {
+        answer = value;
+        Close();
+    }
+
+    protected override void OnHandleCreated(EventArgs e) {
+        base.OnHandleCreated(e);
+        Palette.Theme(this);
+    }
+
+    protected override void OnShown(EventArgs e) {
+        base.OnShown(e);
+        (no ?? yes).Focus();   // un Entrée par mégarde ne fait rien de grave : le bouton choisi d'abord est « non »
+    }
+
+    protected override bool ProcessCmdKey(ref System.Windows.Forms.Message msg, Keys keyData) {
+        if (keyData == Keys.Escape) { Done(false); return true; }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    protected override void OnPaint(PaintEventArgs e) {
+        Graphics g = e.Graphics;
+        g.Clear(Palette.Back);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        var circle = new RectangleF(pad, pad, icon, icon);
+        using (var b = new SolidBrush(Palette.Mix(Palette.Back, tint, 60))) g.FillEllipse(b, circle);
+        using (var pen = new Pen(tint, 1.5f * scale)) g.DrawEllipse(pen, circle);
+        Size gs = TextRenderer.MeasureText(g, glyph.ToString(), head, Size.Empty, TextFormatFlags.NoPadding);
+        TextRenderer.DrawText(g, glyph.ToString(), head, new Point((int) (circle.X + (icon - gs.Width) / 2f), (int) (circle.Y + (icon - gs.Height) / 2f)),
+                tint, Palette.Mix(Palette.Back, tint, 60), TextFormatFlags.NoPadding);
+        int textW = ClientSize.Width - textX - pad;
+        const TextFormatFlags wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding;
+        int top = string.IsNullOrEmpty(text) ? pad + Math.Max(0, (icon - headH) / 2) : pad + (int) (2 * scale);
+        TextRenderer.DrawText(g, heading, head, new Rectangle(textX, top, textW, headH), Palette.Text, Palette.Back, wrap);
+        if (!string.IsNullOrEmpty(text)) {
+            TextRenderer.DrawText(g, text, body, new Rectangle(textX, top + headH + (int) (8 * scale), textW, ClientSize.Height),
+                    Palette.Dim, Palette.Back, wrap);
+        }
+    }
+
+    /** Une question à deux réponses : vrai si on choisit `yes`. */
+    public static bool Ask(IWin32Window owner, string heading, string text, string yes, string no) {
+        using (var d = new Dialog(heading, text, yes, no, Tone.Action, Palette.Scale)) {
+            d.ShowDialog(owner);
+            return d.answer;
+        }
+    }
+
+    /** -SelfTest : la question « Remettre l'écran d'accueil d'origine ? » en image, barre de titre comprise. */
+    public static void Snapshot(Form owner, string file) {
+        using (var d = new Dialog("Remettre l'écran d'accueil d'origine ?", "Les applis mises de côté reviennent comme avant. "
+                + "FrontEndTV reste installé : tu pourras y revenir.", "Remettre", "Annuler", Tone.Action, Palette.Scale)) {
+            d.StartPosition = FormStartPosition.Manual;
+            d.Location = new Point(owner.Left + (owner.Width - d.Width) / 2, owner.Top + (owner.Height - d.Height) / 2);
+            d.Show(owner);
+            d.Refresh();
+            Application.DoEvents();
+            System.Threading.Thread.Sleep(300);
+            Application.DoEvents();
+            using (var b = new Bitmap(d.Width, d.Height)) {
+                try {
+                    using (Graphics g = Graphics.FromImage(b)) g.CopyFromScreen(d.Location, Point.Empty, d.Size);
+                } catch (Exception) {
+                    d.DrawToBitmap(b, new Rectangle(Point.Empty, d.Size));
+                }
+                b.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            d.Close();
+        }
+    }
+
+    /** Un message, avec un seul bouton. */
+    public static void Tell(IWin32Window owner, string heading, string text, Tone tone) {
+        using (var d = new Dialog(heading, text, "OK", null, tone, Palette.Scale)) {
+            if (owner == null) d.StartPosition = FormStartPosition.CenterScreen;
+            d.ShowDialog(owner);
+        }
+    }
+
+    protected override void Dispose(bool disposing) {
+        if (disposing) { head.Dispose(); body.Dispose(); }
+        base.Dispose(disposing);
     }
 }
 

@@ -1,6 +1,7 @@
 # Compilation GitHub (Windows) : vérifie FrontEndTV-Installateur.exe pour de vrai.
 # 1. il démarre, ouvre sa fenêtre et la ferme sans erreur (-SelfTest enregistre ses pages : fenetre.png, l'ouverture
-#    fenetre-intro.png, le menu des pays fenetre-pays.png et le déroulé fenetre-2.png) ; 2. Windows Defender ne le signale pas.
+#    fenetre-intro.png, le menu des pays fenetre-pays.png, une
+#    question fenetre-question.png et le déroulé fenetre-2.png) ; 2. Windows Defender ne le signale pas.
 $ErrorActionPreference = 'Stop'
 $exe = Resolve-Path 'FrontEndTV-Installateur.exe'
 $shot = Join-Path (Get-Location) 'fenetre.png'
