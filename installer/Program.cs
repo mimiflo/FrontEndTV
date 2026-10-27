@@ -102,16 +102,19 @@ static class Program {
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
 }
 
-/** Les couleurs : celles des réglages de FrontEndTV (fond nuit, violet). */
+/** Les couleurs : celles des réglages de FrontEndTV sur la TV (bleu nuit, cartes plus claires, violet). */
 static class Palette {
-    public static readonly Color Back = Color.FromArgb(16, 13, 24);
-    public static readonly Color Card = Color.FromArgb(29, 24, 42);
-    public static readonly Color Field = Color.FromArgb(37, 31, 54);
-    public static readonly Color Border = Color.FromArgb(58, 50, 82);
-    public static readonly Color Text = Color.FromArgb(245, 243, 250);
-    public static readonly Color Dim = Color.FromArgb(160, 153, 184);
-    public static readonly Color Accent = Color.FromArgb(139, 92, 246);
-    public static readonly Color AccentHover = Color.FromArgb(160, 122, 250);
+    public static readonly Color Back = Color.FromArgb(14, 19, 32);
+    public static readonly Color Card = Color.FromArgb(21, 28, 43);
+    public static readonly Color Edge = Color.FromArgb(34, 43, 61);
+    public static readonly Color Field = Color.FromArgb(28, 36, 54);
+    public static readonly Color Border = Color.FromArgb(46, 57, 79);
+    public static readonly Color Text = Color.FromArgb(245, 247, 250);
+    public static readonly Color Dim = Color.FromArgb(154, 163, 181);
+    public static readonly Color Faint = Color.FromArgb(98, 108, 128);
+    public static readonly Color Accent = Color.FromArgb(123, 97, 255);
+    public static readonly Color AccentHover = Color.FromArgb(150, 128, 255);
+    public static readonly Color AccentEnd = Color.FromArgb(160, 100, 250);   // l'autre bout du dégradé du bouton
     public static readonly Color Green = Color.FromArgb(52, 211, 153);
     public static readonly Color Amber = Color.FromArgb(251, 191, 36);
     public static readonly Color Red = Color.FromArgb(248, 113, 113);
@@ -226,7 +229,7 @@ sealed class MainForm : Form, IReport {
     DeviceList tvs;
     Field ip, name, key;
     Picker country;
-    Label ipStatus;
+    Note ipStatus;
     LinkLabel refresh;
     RoundButton go;
 
@@ -294,7 +297,7 @@ sealed class MainForm : Form, IReport {
         }
     }
 
-    const int Width0 = 560, Height0 = 744, W = Width0 - 64;   // taille de la fenêtre à 100 %, largeur du contenu
+    const int Width0 = 560, Height0 = 770, W = Width0 - 64;   // taille de la fenêtre à 100 %, largeur du contenu
 
     int S(float v) { return (int) Math.Round(v * scale); }
 
@@ -385,7 +388,7 @@ sealed class MainForm : Form, IReport {
             country.CloseList();
             setup.Visible = false;
             progress.Visible = true;
-            pageTitle.Text = "Installation de FrontEndTV";
+            pageTitle.Text = "INSTALLATION DE FRONTENDTV — TV DU SALON";
             steps.Reset(new[] { "Connexion à la TV", "Installation de l'appli", "Activation comme écran d'accueil" });
             steps.Set(Engine.StepConnect, StepState.Done, "TCL Smart TV Pro · Android 11");
             steps.Set(Engine.StepInstall, StepState.Running, "Envoi de l'appli (1,5 Mo)... 45 %");
@@ -479,12 +482,16 @@ sealed class MainForm : Form, IReport {
     void BuildSetup() {
         setup = Page();
         setupHeader = AddHeader(setup, "Écran d'accueil pour Google TV / Android TV");
+        int inner = W - 32;   // la largeur dans une carte
 
-        int y = S(104);
-        AddLabel(setup, "TA TV", caps, Palette.Dim, S(32), y, S(200), S(18));
-        refresh = Link(setup, "Actualiser", S(32), y - S(1), S(W), ContentAlignment.MiddleRight, (s, e) => { Touch(); Search(); });
+        // Carte 1 : la TV (la liste, l'adresse, ce qui se passe)
+        var tvCard = new Card(Palette.Card, scale);
+        tvCard.Bounds = new Rectangle(S(32), S(100), S(W), S(342));
+        setup.Controls.Add(tvCard);
+        AddLabel(tvCard, "TA TV", caps, Palette.Dim, S(16), S(16), S(200), S(18));
+        refresh = Link(tvCard, "Actualiser", S(16), S(15), S(inner), ContentAlignment.MiddleRight, (s, e) => { Touch(); Search(); });
         tvs = new DeviceList(scale, bold, small);
-        tvs.Bounds = new Rectangle(S(32), y + S(24), S(W), DeviceList.HeightFor(3, scale));
+        tvs.Bounds = new Rectangle(S(16), S(42), S(inner), DeviceList.HeightFor(3, scale));
         tvs.Picked += (s, e) => {
             Touch();
             Tv t = tvs.Current;
@@ -493,12 +500,11 @@ sealed class MainForm : Form, IReport {
             TellAbout(t, false);
         };
         tvs.Chosen += (s, e) => { if (tvs.Current != null && tvs.Current.Adb) Start(false); };
-        setup.Controls.Add(tvs);
-
-        y = tvs.Bottom + S(14);
-        AddLabel(setup, "Adresse IP", bold, Palette.Text, S(32), y + S(9), S(108), S(22));
-        ip = new Field("ex. 192.168.1.50 — ou choisis ta TV ci-dessus", scale, body);
-        ip.Bounds = new Rectangle(S(148), y, S(W - 116), S(40));
+        tvCard.Controls.Add(tvs);
+        int y = S(246);
+        AddLabel(tvCard, "ADRESSE IP", caps, Palette.Dim, S(16), y, S(110), S(40)).TextAlign = ContentAlignment.MiddleLeft;
+        ip = new Field("ex. 192.168.1.50", scale, body);
+        ip.Bounds = new Rectangle(S(126), y, S(inner - 110), S(40));
         ip.Value = options.Ip;
         typedIp = options.Ip.Length > 0;
         ip.Box.TextChanged += (s, e) => {
@@ -507,39 +513,42 @@ sealed class MainForm : Form, IReport {
             string a = Engine.Normalize(ip.Value);
             tvs.SelectIp(a != null && a.EndsWith(":5555") ? a.Substring(0, a.Length - 5) : "");
         };
-        setup.Controls.Add(ip);
-        ipStatus = AddLabel(setup, "", small, Palette.Dim, S(32), y + S(46), S(W), S(36));
+        tvCard.Controls.Add(ip);
+        ipStatus = new Note(scale, small);
+        ipStatus.Bounds = new Rectangle(S(16), y + S(50), S(inner), S(36));
+        tvCard.Controls.Add(ipStatus);
 
-        y = ipStatus.Bottom + S(14);
-        AddLabel(setup, "Ton prénom", bold, Palette.Text, S(32), y, S(240), S(22));
-        AddLabel(setup, "Pays", bold, Palette.Text, S(300), y, S(228), S(22));
+        // Carte 2 : les réglages (prénom, pays, clé TMDB facultative)
+        var more = new Card(Palette.Card, scale);
+        more.Bounds = new Rectangle(S(32), tvCard.Bottom + S(14), S(W), S(176));
+        setup.Controls.Add(more);
+        int half = (inner - 12) / 2;
+        AddLabel(more, "TON PRÉNOM", caps, Palette.Dim, S(16), S(16), S(half), S(18));
+        AddLabel(more, "PAYS", caps, Palette.Dim, S(16 + half + 12), S(16), S(half), S(18));
         name = new Field("facultatif, pour « Bonsoir, … »", scale, body);
-        name.Bounds = new Rectangle(S(32), y + S(26), S(252), S(40));
+        name.Bounds = new Rectangle(S(16), S(40), S(half), S(40));
         name.Value = options.Name.Length > 0 ? options.Name : Engine.Recall("name");
-        setup.Controls.Add(name);
+        more.Controls.Add(name);
         country = new Picker(scale, body, small);
-        country.Bounds = new Rectangle(S(300), y + S(26), S(W - 268), S(40));
+        country.Bounds = new Rectangle(S(16 + half + 12), S(40), S(half), S(40));
         foreach (string[] c in Countries.All) country.Items.Add(c);
         string r = options.Region.Length > 0 ? options.Region.ToUpperInvariant() : Engine.Recall("region");
         country.Value = r.Length == 2 ? r : Engine.DefaultRegion();
         country.Changed += (s, e) => Touch();
         country.MouseDown += (s, e) => Touch();
-        setup.Controls.Add(country);
-
-        y += S(80);
-        AddLabel(setup, "Clé TMDB (facultatif)", bold, Palette.Text, S(32), y, S(300), S(22));
-        Link(setup, "Obtenir une clé gratuite", S(32), y + S(2), S(W), ContentAlignment.MiddleRight,
+        more.Controls.Add(country);
+        AddLabel(more, "CLÉ TMDB  ·  FACULTATIF", caps, Palette.Dim, S(16), S(96), S(260), S(18));
+        Link(more, "Obtenir une clé gratuite", S(16), S(95), S(inner), ContentAlignment.MiddleRight,
                 (s, e) => { Touch(); Open("https://www.themoviedb.org/settings/api"); });
-        key = new Field("pas besoin — vide : la TV garde ce qu'elle a", scale, body);
-        key.Bounds = new Rectangle(S(32), y + S(26), S(W), S(40));
+        key = new Field("pas besoin : les recommandations sont intégrées", scale, body);
+        key.Bounds = new Rectangle(S(16), S(120), S(inner), S(40));
         key.Value = options.Key;
-        setup.Controls.Add(key);
-        AddLabel(setup, "Les recommandations sont intégrées : pas besoin de clé pour les avoir.", small, Palette.Dim,
-                S(32), y + S(70), S(W), S(20));
+        more.Controls.Add(key);
 
         go = new RoundButton(GoText, Palette.Accent, Palette.AccentHover, Color.White, scale);
+        go.Gradient = true;
         go.Font = Px(16f, true);
-        go.Bounds = new Rectangle(S(32), y + S(104), S(W), S(52));
+        go.Bounds = new Rectangle(S(32), more.Bottom + S(16), S(W), S(52));
         go.Click += (s, e) => Start(false);
         setup.Controls.Add(go);
         Link(setup, "Remettre l'écran d'accueil d'origine", S(32), go.Bottom + S(12), S(W), ContentAlignment.MiddleCenter, (s, e) => {
@@ -547,7 +556,7 @@ sealed class MainForm : Form, IReport {
             if (Dialog.Ask(this, "Remettre l'écran d'accueil d'origine ?", "Les applis mises de côté reviennent comme avant. "
                     + "FrontEndTV reste installé : tu pourras y revenir.", "Remettre", "Annuler")) Start(true);
         });
-        AddLabel(setup, "par Florian", small, Color.FromArgb(110, 104, 132),
+        AddLabel(setup, "par Florian", small, Palette.Faint,
                 S(32), go.Bottom + S(38), S(W), S(20)).TextAlign = ContentAlignment.MiddleCenter;
         foreach (Field f in new[] { ip, name, key }) {
             f.Box.KeyDown += (s, e) => {
@@ -625,14 +634,14 @@ sealed class MainForm : Form, IReport {
     /** Ce qu'on peut dire de la TV choisie ; `final` : après une recherche (elle peut démarrer seule). */
     void TellAbout(Tv t, bool final) {
         if (!t.Adb) {
-            Status("Active « Débogage USB » sur cette TV : Paramètres → Système → À propos (7 appuis sur « Build »), "
-                    + "puis Options pour les développeurs. Je réessaie tout seul.", Palette.Amber);
+            Status("Active « Débogage USB » sur cette TV (Paramètres → Système → Options pour les développeurs). "
+                    + "Je réessaie tout seul.", Palette.Amber);
             rescan.Start();
             return;
         }
         if (final && auto) { Start(options.Original); return; }
         bool alone = tvs.Items.Count(x => x.Adb) == 1;
-        Status((t.Last ? "✔ Ta TV de la dernière fois est prête" : "✔ " + t.Title() + " est prête")
+        Status((t.Last ? "Ta TV de la dernière fois est prête" : t.Title() + " est prête")
                 + (final && !touched && (t.Last || alone) ? " — démarrage automatique" : ""), Palette.Green);
         if (final && (t.Last || alone)) StartCountdown(t.Last ? 4 : 8);
     }
@@ -670,8 +679,7 @@ sealed class MainForm : Form, IReport {
     }
 
     void Status(string text, Color color) {
-        ipStatus.Text = text;
-        ipStatus.ForeColor = color;
+        ipStatus.Show(text, color);
     }
 
     // MARK: - Page 2 : déroulé
@@ -679,19 +687,24 @@ sealed class MainForm : Form, IReport {
     void BuildProgress() {
         progress = Page();
         AddHeader(progress, "Installation sur ta TV");
-        pageTitle = AddLabel(progress, "", bold, Palette.Text, S(32), S(108), S(W), S(24));
+        pageTitle = AddLabel(progress, "", caps, Palette.Dim, S(32), S(112), S(W), S(18));
 
+        var stepsCard = new Card(Palette.Card, scale);
+        stepsCard.Bounds = new Rectangle(S(32), S(138), S(W), S(2 * 64 + 48 + 40));
+        progress.Controls.Add(stepsCard);
         steps = new Steps(scale, bold, small);
-        steps.Bounds = new Rectangle(S(32), S(148), S(W), S(3 * 64));
-        progress.Controls.Add(steps);
+        steps.BackColor = Palette.Card;
+        steps.Bounds = new Rectangle(S(20), S(20), S(W - 40), S(2 * 64 + 48));
+        stepsCard.Controls.Add(steps);
 
         message = new Message(scale, body, Px(13.5f, true));
-        message.Bounds = new Rectangle(S(32), S(364), S(W), S(140));
+        message.Bounds = new Rectangle(S(32), stepsCard.Bottom + S(16), S(W), S(140));
         message.Done.Click += (s, e) => { message.Done.Visible = false; userDone.Set(); };
         message.Visible = false;
         progress.Controls.Add(message);
 
         retry = new RoundButton("Réessayer", Palette.Accent, Palette.AccentHover, Color.White, scale);
+        retry.Gradient = true;
         retry.Font = bold;
         retry.Bounds = new Rectangle(S(32), S(Height0 - 132), S((W - 16) / 2), S(52));
         retry.Click += (s, e) => { progress.Visible = false; setup.Visible = true; go.Focus(); };
@@ -726,12 +739,15 @@ sealed class MainForm : Form, IReport {
         progress.Visible = true;
         Tv t = tvs.Current;
         string which = t != null && t.Ip == ip.Value ? " — " + t.Title() : "";
-        pageTitle.Text = (original ? "Retour à l'écran d'accueil d'origine" : "Installation de FrontEndTV") + which;
+        pageTitle.Text = ((original ? "Retour à l'écran d'accueil d'origine" : "Installation de FrontEndTV") + which).ToUpperInvariant();
         steps.Reset(new[] { "Connexion à la TV", original ? "Application" : "Installation de l'appli",
                 original ? "Accueil d'origine" : "Activation comme écran d'accueil" });
         Say(Tone.Info, null);
         retry.Visible = false;
         close.Text = "Annuler";
+        close.Fill = Palette.Field;
+        close.Hover = Palette.Border;
+        close.Gradient = false;
         close.Left = S(32);
         close.Width = S(W);
 
@@ -756,6 +772,7 @@ sealed class MainForm : Form, IReport {
             close.Width = S(W);
             close.Fill = Palette.Accent;
             close.Hover = Palette.AccentHover;
+            close.Gradient = true;
             close.Invalidate();
             close.Focus();
         } else {
@@ -859,7 +876,15 @@ sealed class Header : Control {
         int h1 = TextRenderer.MeasureText(g, line1, big, Size.Empty, TextFormatFlags.NoPadding).Height;
         int h2 = TextRenderer.MeasureText(g, line2, small, Size.Empty, TextFormatFlags.NoPadding).Height;
         int top = Math.Max(0, (size - h1 - h2) / 2);
-        TextRenderer.DrawText(g, line1, big, new Point(x, top), Palette.Text, Palette.Back, TextFormatFlags.NoPadding);
+        // « FrontEnd » en blanc et « TV » en violet, comme sur la TV
+        if (line1.EndsWith("TV")) {
+            string head = line1.Substring(0, line1.Length - 2);
+            int w = TextRenderer.MeasureText(g, head, big, Size.Empty, TextFormatFlags.NoPadding).Width;
+            TextRenderer.DrawText(g, head, big, new Point(x, top), Palette.Text, Palette.Back, TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, "TV", big, new Point(x + w, top), Palette.AccentHover, Palette.Back, TextFormatFlags.NoPadding);
+        } else {
+            TextRenderer.DrawText(g, line1, big, new Point(x, top), Palette.Text, Palette.Back, TextFormatFlags.NoPadding);
+        }
         TextRenderer.DrawText(g, line2, small, new Point(x + (int) (1 * scale), top + h1), Palette.Dim, Palette.Back, TextFormatFlags.NoPadding);
     }
 }
@@ -878,8 +903,44 @@ sealed class Card : Panel {
     protected override void OnPaintBackground(PaintEventArgs e) {
         e.Graphics.Clear(Parent != null ? Parent.BackColor : Palette.Back);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using (var path = Palette.Round(new RectangleF(0, 0, Width - 1, Height - 1), 12 * scale))
-        using (var b = new SolidBrush(fill)) e.Graphics.FillPath(b, path);
+        using (var path = Palette.Round(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), 14 * scale))
+        using (var b = new SolidBrush(fill))
+        using (var pen = new Pen(Palette.Edge, 1f)) {
+            e.Graphics.FillPath(b, path);
+            e.Graphics.DrawPath(pen, path);
+        }
+    }
+}
+
+/** Ce qui se passe, sous l'adresse : une pastille de couleur, puis le texte (deux lignes au plus). */
+sealed class Note : Control {
+    readonly float scale;
+    Color tint = Palette.Dim;
+
+    public Note(float scale, Font font) {
+        this.scale = scale;
+        Font = font;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+    }
+
+    public void Show(string text, Color color) {
+        Text = text;
+        tint = color;
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e) {
+        Graphics g = e.Graphics;
+        Color back = Parent != null ? Parent.BackColor : Palette.Back;
+        g.Clear(back);
+        if (string.IsNullOrEmpty(Text)) return;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        int lineH = TextRenderer.MeasureText(g, "Ag", Font, Size.Empty, TextFormatFlags.NoPadding).Height;
+        float dot = 7 * scale;
+        using (var b = new SolidBrush(tint)) g.FillEllipse(b, 1, (lineH - dot) / 2f + 1, dot, dot);
+        int x = (int) (dot + 9 * scale);
+        TextRenderer.DrawText(g, Text, Font, new Rectangle(x, 0, Width - x, Height), tint, back,
+                TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
     }
 }
 
@@ -942,6 +1003,7 @@ sealed class Field : Control {
 /** Bouton arrondi. */
 sealed class RoundButton : Control {
     public Color Fill, Hover, Ink;
+    public bool Gradient;   // le bouton principal : un dégradé violet
     readonly float scale;
     bool over, down;
 
@@ -974,10 +1036,25 @@ sealed class RoundButton : Control {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         Color c = !Enabled ? Palette.Border : over ? Hover : Fill;
         if (down) c = ControlPaint.Dark(c, 0.05f);
-        using (var path = Palette.Round(new RectangleF(0.5f, 0.5f, Width - 2, Height - 2), 12 * scale))
-        using (var b = new SolidBrush(c)) {
-            g.FillPath(b, path);
+        var r = new RectangleF(0.5f, 0.5f, Width - 2, Height - 2);
+        using (var path = Palette.Round(r, 12 * scale)) {
+            if (Gradient && Enabled) {
+                Color end = over ? Palette.Mix(Palette.AccentEnd, Color.White, 30) : Palette.AccentEnd;
+                using (var b = new LinearGradientBrush(r, c, down ? ControlPaint.Dark(end, 0.05f) : end, 0f)) g.FillPath(b, path);
+                // Un liseré clair en haut, comme une surface en verre
+                using (var light = new LinearGradientBrush(r, Color.FromArgb(70, Color.White), Color.FromArgb(0, Color.White), 90f))
+                using (var pen = new Pen(light, 1f)) g.DrawPath(pen, path);
+            } else {
+                using (var b = new SolidBrush(c)) g.FillPath(b, path);
+            }
             if (Focused && ShowFocusCues) using (var pen = new Pen(Color.FromArgb(150, Color.White), 1.5f * scale)) g.DrawPath(pen, path);
+        }
+        if (Gradient && Enabled) {   // sur un dégradé : le texte lissé (ClearType a besoin d'un fond uni)
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            using (var ink = new SolidBrush(Ink))
+            using (var f = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                g.DrawString(Text, Font, ink, new RectangleF(0, 0, Width, Height), f);
+            return;
         }
         // Le texte avec sa couleur de fond (ClearType net), sur sa seule surface : les coins restent arrondis
         const TextFormatFlags flags = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
@@ -1299,7 +1376,7 @@ sealed class DeviceList : Control {
     bool searching;
     float angle;
     readonly System.Windows.Forms.Timer spin = new System.Windows.Forms.Timer();
-    const int RowH = 62, Gap = 8, Shown = 3;
+    const int RowH = 58, Gap = 8, Shown = 3;
 
     public static int HeightFor(int rows, float scale) { return (int) Math.Round((rows * RowH + (rows - 1) * Gap) * scale); }
 
@@ -1307,7 +1384,7 @@ sealed class DeviceList : Control {
         this.scale = scale; this.name = name; this.detail = detail;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                 | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
-        BackColor = Palette.Back;
+        BackColor = Palette.Card;   // dans la carte « Ta TV »
         TabStop = true;
         spin.Interval = 33;
         spin.Tick += (s, e) => {
@@ -1386,13 +1463,13 @@ sealed class DeviceList : Control {
             float gutter = Items.Count > Shown ? 10 * scale : 0;   // la place de la barre de défilement
             var r = new RectangleF(0.5f, v * Row + 0.5f, Width - 1.5f - gutter, RowH * scale - 1);
             bool on = i == selected;
-            Color back = on ? Palette.Mix(Palette.Card, Palette.Accent, 46) : i == hover ? Palette.Mix(Palette.Card, Palette.Accent, 16) : Palette.Card;
+            Color back = on ? Palette.Mix(Palette.Field, Palette.Accent, 52) : i == hover ? Palette.Mix(Palette.Field, Palette.Accent, 18) : Palette.Field;
             using (var path = Palette.Round(r, 12 * scale)) {
                 using (var b = new SolidBrush(back)) g.FillPath(b, path);
                 if (on) using (var pen = new Pen(Focused ? Palette.AccentHover : Palette.Accent, 1.6f * scale)) g.DrawPath(pen, path);
             }
             // La vignette : une TV blanche sur un carré violet
-            float tile = 42 * scale;
+            float tile = 40 * scale;
             var square = new RectangleF(r.X + 10 * scale, r.Y + (r.Height - tile) / 2, tile, tile);
             using (var path = Palette.Round(square, 10 * scale))
             using (var b = new LinearGradientBrush(square, Color.FromArgb(124, 77, 255), Color.FromArgb(76, 43, 160), 45f))
@@ -1430,7 +1507,7 @@ sealed class DeviceList : Control {
     void DrawEmpty(Graphics g) {
         var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
         using (var path = Palette.Round(r, 12 * scale)) {
-            using (var b = new SolidBrush(Palette.Card)) g.FillPath(b, path);
+            using (var b = new SolidBrush(Palette.Field)) g.FillPath(b, path);
             using (var pen = new Pen(Palette.Border, 1f) { DashStyle = DashStyle.Dash }) g.DrawPath(pen, path);
         }
         const TextFormatFlags center = TextFormatFlags.NoPadding | TextFormatFlags.HorizontalCenter;
@@ -1444,18 +1521,18 @@ sealed class DeviceList : Control {
                 g.DrawArc(p, circle, angle, 100);
             }
             TextRenderer.DrawText(g, "Recherche des TV sur ton réseau...", name, new Rectangle(0, (int) (circle.Bottom + 14 * scale), Width, hName),
-                    Palette.Text, Palette.Card, center);
+                    Palette.Text, Palette.Field, center);
             TextRenderer.DrawText(g, "Les TV Android et Google TV allumées s'affichent ici.", detail,
-                    new Rectangle(0, (int) (circle.Bottom + 18 * scale) + hName, Width, (int) (20 * scale)), Palette.Dim, Palette.Card, center);
+                    new Rectangle(0, (int) (circle.Bottom + 18 * scale) + hName, Width, (int) (20 * scale)), Palette.Dim, Palette.Field, center);
             return;
         }
         int x = (int) (20 * scale), y = (int) (18 * scale);
-        TextRenderer.DrawText(g, "Aucune TV trouvée pour l'instant", name, new Point(x, y), Palette.Text, Palette.Card, TextFormatFlags.NoPadding);
+        TextRenderer.DrawText(g, "Aucune TV trouvée pour l'instant", name, new Point(x, y), Palette.Text, Palette.Field, TextFormatFlags.NoPadding);
         TextRenderer.DrawText(g, "Sur la TV, une seule fois :\n"
                 + "1.  Paramètres → Système → À propos : appuie 7 fois sur « Build ».\n"
                 + "2.  Options pour les développeurs : active « Débogage USB ».\n"
                 + "3.  La TV et ce PC sont sur le même réseau (Wi-Fi ou câble).",
-                detail, new Rectangle(x, y + hName + (int) (10 * scale), Width - 2 * x, Height - y - hName), Palette.Dim, Palette.Card,
+                detail, new Rectangle(x, y + hName + (int) (10 * scale), Width - 2 * x, Height - y - hName), Palette.Dim, Palette.Field,
                 TextFormatFlags.NoPadding | TextFormatFlags.WordBreak);
     }
 
